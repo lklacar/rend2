@@ -1567,7 +1567,7 @@ static void RB_IterateStagesGeneric( DrawItem* drawItem, shaderCommands_t *input
 			{
 				// we want to be able to rip a hole in the thing being disintegrated, and by doing the depth-testing it avoids some kinds of artefacts, but will probably introduce others?
 				stateBits = GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_DEPTHMASK_TRUE;
-				layer->alphaTestFunc = ALPHA_TEST_GE;
+				layer->alphaTestFunc = AlphaTestFunc::GE;
 				layer->alphaTestValue = 0.75f;
 			}
 			else

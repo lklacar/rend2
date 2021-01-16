@@ -1285,22 +1285,22 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 
 			if ( !Q_stricmp( token, "GT0" ) )
 			{
-				stage->alphaTestFunc = ALPHA_TEST_GT;
+				stage->alphaTestFunc = AlphaTestFunc::OFF;
 				stage->alphaTestValue = 0.0f;
 			}
 			else if ( !Q_stricmp( token, "LT128" ) )
 			{
-				stage->alphaTestFunc = ALPHA_TEST_LT;
+				stage->alphaTestFunc = AlphaTestFunc::LT;
 				stage->alphaTestValue = 0.5f;
 			}
 			else if ( !Q_stricmp( token, "GE128" ) )
 			{
-				stage->alphaTestFunc = ALPHA_TEST_GE;
+				stage->alphaTestFunc = AlphaTestFunc::GE;
 				stage->alphaTestValue = 0.5f;
 			}
 			else if ( !Q_stricmp( token, "GE192" ) )
 			{
-				stage->alphaTestFunc = ALPHA_TEST_GE;
+				stage->alphaTestFunc = AlphaTestFunc::GE;
 				stage->alphaTestValue = 0.75f;
 			}
 			else

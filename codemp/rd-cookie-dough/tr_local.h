@@ -368,12 +368,12 @@ typedef struct textureBundle_s {
 
 #define NUM_TEXTURE_BUNDLES 2
 
-enum AlphaTestFunc
+enum class AlphaTestFunc : int
 {
-	ALPHA_TEST_OFF,
-	ALPHA_TEST_LT,
-	ALPHA_TEST_GT,
-	ALPHA_TEST_GE,
+	OFF,
+	LT,
+	GT,
+	GE,
 };
 
 typedef struct shaderStage_s {

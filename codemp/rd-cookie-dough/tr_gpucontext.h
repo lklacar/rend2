@@ -43,7 +43,7 @@ struct DrawItem
 
 		bool modulateTextures;
 		float alphaTestValue;
-		int alphaTestFunc;
+		AlphaTestFunc alphaTestFunc;
 	} layers[16];
 
 	float minDepthRange;
