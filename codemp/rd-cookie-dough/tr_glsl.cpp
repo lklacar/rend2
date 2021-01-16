@@ -130,6 +130,17 @@ layout(std140, binding = 0) uniform View
 	mat4 u_ProjectionMatrix;
 };
 
+struct Light
+{
+	vec4_t originAndRadius; // xyz = origin, w = radius
+	vec4_t color;
+};
+
+layout(std140, binding = 0) uniform Scene
+{
+	Light u_Lights[32];
+};
+
 layout(std430, binding = 0) buffer ModelMatrices
 {
 	mat4 u_ModelViewMatrix[];

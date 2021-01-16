@@ -703,6 +703,7 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	ConstantBuffer view2DBuffer = backEnd.viewConstantsBuffer;
 	backEnd.viewConstantsBuffer = GpuBuffers_AllocFrameConstantDataMemory(
 		backEnd.viewParms.projectionMatrix, sizeof(backEnd.viewParms.projectionMatrix));
+	// TODO: Upload lights to this constants buffer too
 
 	const size_t matricesSize = sizeof(float) * 16 * (MAX_REFENTITIES + 1);
 	backEnd.modelsStorageBuffer = GpuBuffers_AllocFrameStorageDataMemory(nullptr, matricesSize);
