@@ -125,19 +125,16 @@ static GLuint GLSL_CreateProgram(const char* vertexShaderCode, const char* fragm
 static void GLSL_MainShader_Init()
 {
 	static constexpr const char VERTEX_SHADER[] = R"(
+struct Light
+{
+	vec4 originAndRadius; // xyz = origin, w = radius
+	vec4 color;
+};
+
 layout(std140, binding = 0) uniform View
 {
 	mat4 u_ProjectionMatrix;
-};
-
-struct Light
-{
-	vec4_t originAndRadius; // xyz = origin, w = radius
-	vec4_t color;
-};
-
-layout(std140, binding = 0) uniform Scene
-{
+	// Keep lights per-view for now until we need to render multiple scenes
 	Light u_Lights[32];
 };
 
@@ -155,9 +152,13 @@ layout(location = 2) in vec2 in_TexCoord0;
 layout(location = 3) in vec2 in_TexCoord1;
 #endif
 
+#if !defined(RENDER_LIGHT_ONLY)
 layout(location = 0) out vec4 out_Color;
 layout(location = 1) out vec2 out_TexCoord0;
 layout(location = 2) out vec2 out_TexCoord1;
+#else
+layout(location = 0) out vec3 out_PositionWS;
+#endif
 
 #define u_EntityIndex int(u_PushConstants[0])
 
@@ -169,31 +170,60 @@ void main()
 #endif
 	gl_Position = u_ProjectionMatrix * position;
 
+#if !defined(RENDER_LIGHT_ONLY)
 	out_Color = in_Color;
 	out_TexCoord0 = in_TexCoord0;
 #if defined(MULTITEXTURE)
 	out_TexCoord1 = in_TexCoord1;
 #endif
+#else
+	out_PositionWS = position;
+#endif
 }
 )";
 
 	static constexpr const char FRAGMENT_SHADER[] = R"(
+struct Light
+{
+	vec4 originAndRadius; // xyz = origin, w = radius
+	vec4 color;
+};
+
+layout(std140, binding = 0) uniform View
+{
+	mat4 u_ProjectionMatrix;
+	// Keep lights per-view for now until we need to render multiple scenes
+	Light u_Lights[32];
+};
+
+layout(std430, binding = 0) buffer ModelMatrices
+{
+	mat4 u_ModelViewMatrix[];
+};
+
 layout(binding = 0) uniform sampler2D u_Texture0;
 layout(binding = 1) uniform sampler2D u_Texture1;
 layout(location = 0) uniform float u_PushConstants[128];
 
+#if !defined(RENDER_LIGHT_ONLY)
 layout(location = 0) in vec4 in_Color;
 layout(location = 1) in vec2 in_TexCoord0;
 layout(location = 2) in vec2 in_TexCoord1;
+#else
+layout(location = 0) in vec3 in_PositionWS;
+#endif
 
 layout(location = 0) out vec4 out_FragColor;
 
+#define u_EntityIndex int(u_PushConstants[0])
 #define u_MultiplyTextures (u_PushConstants[1] > 0.0)
 #define u_AlphaTestValue (u_PushConstants[2])
 #define u_AlphaTestFunc (int(u_PushConstants[3]))
+#define u_LightIndices (uint(u_PushConstants[4]))
 
 void main()
 {
+#if !defined(RENDER_LIGHT_ONLY)
 	vec4 color = texture(u_Texture0, in_TexCoord0);
 
 #if defined(MULTITEXTURE)
@@ -214,6 +244,27 @@ void main()
 		discard;
 	}
 
+#else
+	vec4 color = vec4(0.0);
+	uint lightIndices = u_LightIndices;
+
+	mat4 modelViewMatrix = u_ModelViewMatrix[u_EntityIndex];
+	while (lightIndices != 0)
+	{
+		int lightIndex = findLSB(lightIndices);
+		Light light = u_Lights[lightIndex];
+
+		vec3 modelToLightDiff = light.position.xyz - in_PositionWS;
+		vec3 L = normalize(modelToLightDiff);
+		float d = len(modelToLightDiff);
+		vec3 N = in_NormalWS;
+
+		float NdotL = dot(N, L);
+		// do lighting
+
+		lightIndices &= ~(1u << lightIndex);
+	}
+#endif
 	out_FragColor = color;
 }
 )";

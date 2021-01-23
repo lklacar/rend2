@@ -700,10 +700,35 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	// clear the z buffer, set the modelview, etc
 	RB_BeginDrawingView ();
 
+	struct ViewBuffer {
+		float projectionMatrix[16];
+		struct
+		{
+			vec4_t originAndRadius;
+			vec3_t color;
+			float padding0;  // To keep 16-byte alignment
+		} lights[MAX_DLIGHTS];
+	};
+
 	ConstantBuffer view2DBuffer = backEnd.viewConstantsBuffer;
-	backEnd.viewConstantsBuffer = GpuBuffers_AllocFrameConstantDataMemory(
-		backEnd.viewParms.projectionMatrix, sizeof(backEnd.viewParms.projectionMatrix));
-	// TODO: Upload lights to this constants buffer too
+	backEnd.viewConstantsBuffer = GpuBuffers_AllocFrameConstantDataMemory(nullptr, sizeof(ViewBuffer));
+	ViewBuffer* viewBufferData = reinterpret_cast<ViewBuffer*>(GpuBuffers_Map(&backEnd.viewConstantsBuffer));
+	Com_Memcpy(
+		viewBufferData->projectionMatrix,
+		backEnd.viewParms.projectionMatrix,
+		sizeof(viewBufferData->projectionMatrix));
+	for (int i = 0; i < backEnd.refdef.num_dlights; ++i)
+	{
+		const dlight_t* dl = backEnd.refdef.dlights + i;
+		VectorSet4(
+			viewBufferData->lights[i].originAndRadius,
+			dl->origin[0],
+			dl->origin[1],
+			dl->origin[2],
+			dl->radius);
+		VectorCopy(dl->color, viewBufferData->lights[i].color);
+	}
+	GpuBuffers_Unmap(&backEnd.viewConstantsBuffer);
 
 	const size_t matricesSize = sizeof(float) * 16 * (MAX_REFENTITIES + 1);
 	backEnd.modelsStorageBuffer = GpuBuffers_AllocFrameStorageDataMemory(nullptr, matricesSize);
