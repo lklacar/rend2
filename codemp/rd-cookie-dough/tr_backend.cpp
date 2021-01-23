@@ -713,9 +713,9 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	{
 		orientationr_t ori = {};
 		R_RotateForEntity(backEnd.refdef.entities + i, &backEnd.viewParms, &ori);
-		Com_Memcpy(modelMatrices + 16 * i, ori.modelMatrix, sizeof(ori.modelMatrix));
+		Com_Memcpy(modelMatrices + 16 * i, ori.modelViewMatrix, sizeof(ori.modelViewMatrix));
 	}
-	Com_Memcpy(modelMatrices + 16 * REFENTITYNUM_WORLD, backEnd.viewParms.world.modelMatrix, sizeof(float) * 16);
+	Com_Memcpy(modelMatrices + 16 * REFENTITYNUM_WORLD, backEnd.viewParms.world.modelViewMatrix, sizeof(float) * 16);
 
 	GpuBuffers_Unmap(&backEnd.modelsStorageBuffer);
 

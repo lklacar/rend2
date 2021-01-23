@@ -105,7 +105,7 @@ typedef struct orientationr_s {
 	vec3_t		origin;			// in world coordinates
 	matrix3_t	axis;		// orientation in world
 	vec3_t		viewOrigin;		// viewParms->or.origin in local coordinates
-	float		modelMatrix[16];
+	float		modelViewMatrix[16];
 } orientationr_t;
 
 

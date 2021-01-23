@@ -333,7 +333,7 @@ void R_RotateForEntity( const trRefEntity_t *ent, const viewParms_t *viewParms,
 	preTransEntMatrix[11] = 0;
 	preTransEntMatrix[15] = 1;
 
-	myGlMultMatrix( preTransEntMatrix, viewParms->world.modelMatrix, ori->modelMatrix );
+	myGlMultMatrix( preTransEntMatrix, viewParms->world.modelViewMatrix, ori->modelViewMatrix );
 
 	// calculate the viewer origin in the model's space
 	// needed for fog, specular, and environment mapping
@@ -399,7 +399,7 @@ void R_RotateForViewer (void)
 
 	// convert from our coordinate system (looking down X)
 	// to OpenGL's coordinate system (looking down -Z)
-	myGlMultMatrix( viewerMatrix, s_flipMatrix, tr.ori.modelMatrix );
+	myGlMultMatrix( viewerMatrix, s_flipMatrix, tr.ori.modelViewMatrix );
 
 	tr.viewParms.world = tr.ori;
 
@@ -866,7 +866,7 @@ static qboolean SurfIsOffscreen( const drawSurf_t *drawSurf, vec4_t clipDest[128
 		int j;
 		unsigned int pointFlags = 0;
 
-		R_TransformModelToClip( tess.xyz[i], tr.ori.modelMatrix, tr.viewParms.projectionMatrix, eye, clip );
+		R_TransformModelToClip( tess.xyz[i], tr.ori.modelViewMatrix, tr.viewParms.projectionMatrix, eye, clip );
 
 		for ( j = 0; j < 3; j++ )
 		{
