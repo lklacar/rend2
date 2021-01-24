@@ -219,10 +219,10 @@ static void DrawMultitextured( shaderCommands_t *input, DrawItem::Layer* drawIte
 	pStage = &tess.xstages[stage];
 
 	drawItemLayer->shaderOptions |= MAIN_SHADER_MULTITEXTURE;
-	drawItemLayer->enabledVertexAttributes |= 8;  // add texcoord1
+	drawItemLayer->enabledVertexAttributes |= 16;  // add texcoord1
 	drawItemLayer->textures[0] = R_GetAnimatedImage(&pStage->bundle[0]);
 	drawItemLayer->textures[1] = R_GetAnimatedImage(&pStage->bundle[1]);
-	drawItemLayer->vertexBuffers[3] = GpuBuffers_AllocFrameVertexDataMemory(
+	drawItemLayer->vertexBuffers[4] = GpuBuffers_AllocFrameVertexDataMemory(
 		input->svars.texcoords[1], sizeof(input->svars.texcoords[1][0]) * input->numVertexes);
 	drawItemLayer->stateGroup.stateBits = pStage->stateBits;
 	drawItemLayer->modulateTextures = (tess.shader->multitextureEnv == GL_MODULATE);
@@ -935,11 +935,11 @@ static void RB_IterateStagesGeneric( DrawItem* drawItem, shaderCommands_t *input
 		{
 			layer->shaderOptions = MAIN_SHADER_RENDER_SCENE;
 		}
-		layer->enabledVertexAttributes = 7;
+		layer->enabledVertexAttributes = 13; // pos = 1, color = 4, texcoord = 8
 		layer->vertexBuffers[0] = *positionsBuffer;
-		layer->vertexBuffers[1] = GpuBuffers_AllocFrameVertexDataMemory(
-			tess.svars.colors, sizeof(tess.svars.colors[0]) * input->numVertexes);
 		layer->vertexBuffers[2] = GpuBuffers_AllocFrameVertexDataMemory(
+			tess.svars.colors, sizeof(tess.svars.colors[0]) * input->numVertexes);
+		layer->vertexBuffers[3] = GpuBuffers_AllocFrameVertexDataMemory(
 			tess.svars.texcoords[0], sizeof(tess.svars.texcoords[0][0]) * input->numVertexes);
 
 		if (!backEnd.projection2D)

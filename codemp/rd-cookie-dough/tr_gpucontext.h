@@ -33,7 +33,7 @@ struct DrawItem
 
 		// Vertex format
 		uint32_t enabledVertexAttributes;
-		VertexBuffer vertexBuffers[4];
+		VertexBuffer vertexBuffers[5];
 
 		uint32_t storageBuffersUsed;
 		StorageBuffer storageBuffers[1];

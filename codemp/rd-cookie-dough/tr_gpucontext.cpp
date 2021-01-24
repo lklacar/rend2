@@ -138,8 +138,8 @@ static void RenderContext_Draw(const DrawItem* drawItem)
 
 		GL_State(layer->stateGroup.stateBits);
 
-		int strides[] = {16, 4, 8, 8};
-		for ( int attribIndex = 0; attribIndex < 4; ++attribIndex)
+		int strides[] = {16, 0, 4, 8, 8};
+		for ( int attribIndex = 0; attribIndex < 5; ++attribIndex)
 		{
 			const uint32_t attribBit = 1u << attribIndex;
 			if ( (layer->enabledVertexAttributes & attribBit) != 0 )

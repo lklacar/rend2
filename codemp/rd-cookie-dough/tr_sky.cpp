@@ -432,9 +432,9 @@ static void DrawSkySide( struct image_s *image, const int mins[2], const int max
 	drawItem.layers[0].constantBuffersUsed = 1;
 	drawItem.layers[0].constantBuffers[0] = backEnd.viewConstantsBuffer;
 	drawItem.layers[0].textures[0] = image;
-	drawItem.layers[0].enabledVertexAttributes = 5;
+	drawItem.layers[0].enabledVertexAttributes = 9;
 	drawItem.layers[0].vertexBuffers[0] = positionsBuffer;
-	drawItem.layers[0].vertexBuffers[2] = texcoordsBuffer;
+	drawItem.layers[0].vertexBuffers[3] = texcoordsBuffer;
 
 	RenderContext_AddDrawItem(drawItem);
 }

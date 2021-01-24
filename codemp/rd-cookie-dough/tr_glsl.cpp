@@ -147,10 +147,11 @@ layout(std430, binding = 0) buffer ModelMatrices
 layout(location = 0) uniform float u_PushConstants[128];
 
 layout(location = 0) in vec3 in_Position;
-layout(location = 1) in vec4 in_Color;
-layout(location = 2) in vec2 in_TexCoord0;
+layout(location = 1) in vec3 in_Normal;
+layout(location = 2) in vec4 in_Color;
+layout(location = 3) in vec2 in_TexCoord0;
 #if defined(MULTITEXTURE)
-layout(location = 3) in vec2 in_TexCoord1;
+layout(location = 4) in vec2 in_TexCoord1;
 #endif
 
 #if !defined(RENDER_LIGHT_ONLY)
@@ -159,6 +160,7 @@ layout(location = 1) out vec2 out_TexCoord0;
 layout(location = 2) out vec2 out_TexCoord1;
 #else
 layout(location = 0) out vec3 out_PositionWS;
+layout(location = 1) out vec3 out_Normal;
 #endif
 
 #define u_EntityIndex int(u_PushConstants[0])
@@ -208,6 +210,7 @@ layout(location = 1) in vec2 in_TexCoord0;
 layout(location = 2) in vec2 in_TexCoord1;
 #else
 layout(location = 0) in vec3 in_PositionWS;
+layout(location = 1) in vec3 in_Normal;
 #endif
 
 layout(location = 0) out vec4 out_FragColor;
@@ -245,18 +248,21 @@ void main()
 	vec4 color = vec4(0.0);
 	uint lightIndices = u_LightIndices;
 
+	vec3 N = normalize(in_Normal);
 	while (lightIndices != 0)
 	{
 		int lightIndex = findLSB(lightIndices);
 		Light light = u_Lights[lightIndex];
 
-		vec3 modelToLightDiff = light.position.xyz - in_PositionWS;
+		vec3 modelToLightDiff = light.originAndRadius.xyz - in_PositionWS;
 		vec3 L = normalize(modelToLightDiff);
 		float d = len(modelToLightDiff);
-		vec3 N = in_NormalWS;
 
 		float NdotL = dot(N, L);
-		// do lighting
+		if (NdotL > 0.0)
+		{
+			color += light.originAndRadius.w * light.color * NdotL / (d * d);
+		}
 
 		lightIndices &= ~(1u << lightIndex);
 	}
@@ -310,7 +316,7 @@ layout(std430, binding = 0) buffer ModelMatrices
 };
 
 layout(location = 0) in vec3 in_Position;
-layout(location = 2) in vec2 in_TexCoord;
+layout(location = 3) in vec2 in_TexCoord;
 
 layout(location = 0) out vec2 out_TexCoord;
 
