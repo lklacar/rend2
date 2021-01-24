@@ -179,34 +179,18 @@ void R_LocalPointToWorld (const vec3_t local, vec3_t world) {
 	world[2] = local[0] * tr.ori.axis[0][2] + local[1] * tr.ori.axis[1][2] + local[2] * tr.ori.axis[2][2] + tr.ori.origin[2];
 }
 
-float preTransEntMatrix[16];
-
 /*
 =================
 R_WorldNormalToEntity
 
 =================
 */
-void R_WorldNormalToEntity (const vec3_t worldvec, vec3_t entvec)
+void R_WorldNormalToEntity (const float* modelMatrix, const vec3_t worldvec, vec3_t entvec)
 {
-	entvec[0] = -worldvec[0] * preTransEntMatrix[0] - worldvec[1] * preTransEntMatrix[4] + worldvec[2] * preTransEntMatrix[8];
-	entvec[1] = -worldvec[0] * preTransEntMatrix[1] - worldvec[1] * preTransEntMatrix[5] + worldvec[2] * preTransEntMatrix[9];
-	entvec[2] = -worldvec[0] * preTransEntMatrix[2] - worldvec[1] * preTransEntMatrix[6] + worldvec[2] * preTransEntMatrix[10];
+	entvec[0] = -worldvec[0] * modelMatrix[0] - worldvec[1] * modelMatrix[4] + worldvec[2] * modelMatrix[8];
+	entvec[1] = -worldvec[0] * modelMatrix[1] - worldvec[1] * modelMatrix[5] + worldvec[2] * modelMatrix[9];
+	entvec[2] = -worldvec[0] * modelMatrix[2] - worldvec[1] * modelMatrix[6] + worldvec[2] * modelMatrix[10];
 }
-
-/*
-=================
-R_WorldPointToEntity
-
-=================
-*/
-/*void R_WorldPointToEntity (vec3_t worldvec, vec3_t entvec)
-{
-	entvec[0] = worldvec[0] * preTransEntMatrix[0] + worldvec[1] * preTransEntMatrix[4] + worldvec[2] * preTransEntMatrix[8]+preTransEntMatrix[12];
-	entvec[1] = worldvec[0] * preTransEntMatrix[1] + worldvec[1] * preTransEntMatrix[5] + worldvec[2] * preTransEntMatrix[9]+preTransEntMatrix[13];
-	entvec[2] = worldvec[0] * preTransEntMatrix[2] + worldvec[1] * preTransEntMatrix[6] + worldvec[2] * preTransEntMatrix[10]+preTransEntMatrix[14];
-}
-*/
 
 /*
 =================
@@ -226,16 +210,26 @@ R_TransformModelToClip
 
 ==========================
 */
-void R_TransformModelToClip( const vec3_t src, const float *modelMatrix, const float *projectionMatrix,
+void R_TransformModelToClip( const vec3_t src, const float *modelMatrix, const float *viewMatrix, const float *projectionMatrix,
 							vec4_t eye, vec4_t dst ) {
 	int i;
 
+	vec4_t world = {};
+
 	for ( i = 0 ; i < 4 ; i++ ) {
-		eye[i] =
+		world[i] =
 			src[0] * modelMatrix[ i + 0 * 4 ] +
 			src[1] * modelMatrix[ i + 1 * 4 ] +
 			src[2] * modelMatrix[ i + 2 * 4 ] +
 			1 * modelMatrix[ i + 3 * 4 ];
+	}
+
+	for ( i = 0 ; i < 4 ; i++ ) {
+		eye[i] =
+			world[0] * viewMatrix[ i + 0 * 4 ] +
+			world[1] * viewMatrix[ i + 1 * 4 ] +
+			world[2] * viewMatrix[ i + 2 * 4 ] +
+			world[3] * viewMatrix[ i + 3 * 4 ];
 	}
 
 	for ( i = 0 ; i < 4 ; i++ ) {
@@ -313,27 +307,29 @@ void R_RotateForEntity( const trRefEntity_t *ent, const viewParms_t *viewParms,
 	VectorCopy( ent->e.axis[1], ori->axis[1] );
 	VectorCopy( ent->e.axis[2], ori->axis[2] );
 
-	preTransEntMatrix[0] = ori->axis[0][0];
-	preTransEntMatrix[4] = ori->axis[1][0];
-	preTransEntMatrix[8] = ori->axis[2][0];
-	preTransEntMatrix[12] = ori->origin[0];
+	float entModelMatrix[16];
 
-	preTransEntMatrix[1] = ori->axis[0][1];
-	preTransEntMatrix[5] = ori->axis[1][1];
-	preTransEntMatrix[9] = ori->axis[2][1];
-	preTransEntMatrix[13] = ori->origin[1];
+	entModelMatrix[0] = ori->axis[0][0];
+	entModelMatrix[4] = ori->axis[1][0];
+	entModelMatrix[8] = ori->axis[2][0];
+	entModelMatrix[12] = ori->origin[0];
 
-	preTransEntMatrix[2] = ori->axis[0][2];
-	preTransEntMatrix[6] = ori->axis[1][2];
-	preTransEntMatrix[10] = ori->axis[2][2];
-	preTransEntMatrix[14] = ori->origin[2];
+	entModelMatrix[1] = ori->axis[0][1];
+	entModelMatrix[5] = ori->axis[1][1];
+	entModelMatrix[9] = ori->axis[2][1];
+	entModelMatrix[13] = ori->origin[1];
 
-	preTransEntMatrix[3] = 0;
-	preTransEntMatrix[7] = 0;
-	preTransEntMatrix[11] = 0;
-	preTransEntMatrix[15] = 1;
+	entModelMatrix[2] = ori->axis[0][2];
+	entModelMatrix[6] = ori->axis[1][2];
+	entModelMatrix[10] = ori->axis[2][2];
+	entModelMatrix[14] = ori->origin[2];
 
-	myGlMultMatrix( preTransEntMatrix, viewParms->world.modelViewMatrix, ori->modelViewMatrix );
+	entModelMatrix[3] = 0;
+	entModelMatrix[7] = 0;
+	entModelMatrix[11] = 0;
+	entModelMatrix[15] = 1;
+
+	Com_Memcpy(ori->modelMatrix, entModelMatrix, sizeof(ori->modelMatrix));
 
 	// calculate the viewer origin in the model's space
 	// needed for fog, specular, and environment mapping
@@ -397,9 +393,13 @@ void R_RotateForViewer (void)
 	viewerMatrix[11] = 0;
 	viewerMatrix[15] = 1;
 
-	// convert from our coordinate system (looking down X)
-	// to OpenGL's coordinate system (looking down -Z)
-	myGlMultMatrix( viewerMatrix, s_flipMatrix, tr.ori.modelViewMatrix );
+	Com_Memcpy(tr.viewParms.viewMatrix, viewerMatrix, sizeof(tr.viewParms.viewMatrix));
+
+	Com_Memset(tr.ori.modelMatrix, 0, sizeof(tr.ori.modelMatrix));
+	tr.ori.modelMatrix[0] = 1.0f;
+	tr.ori.modelMatrix[5] = 1.0f;
+	tr.ori.modelMatrix[10] = 1.0f;
+	tr.ori.modelMatrix[15] = 1.0f;
 
 	tr.viewParms.world = tr.ori;
 
@@ -512,25 +512,28 @@ void R_SetupProjection( void ) {
 	height = ymax - ymin;
 	depth = zFar - zNear;
 
-	tr.viewParms.projectionMatrix[0] = 2 * zNear / width;
-	tr.viewParms.projectionMatrix[4] = 0;
-	tr.viewParms.projectionMatrix[8] = ( xmax + xmin ) / width;	// normally 0
-	tr.viewParms.projectionMatrix[12] = 0;
+	float preTransProjectionMatrix[16];
+	preTransProjectionMatrix[0] = 2 * zNear / width;
+	preTransProjectionMatrix[4] = 0;
+	preTransProjectionMatrix[8] = ( xmax + xmin ) / width;	// normally 0
+	preTransProjectionMatrix[12] = 0;
 
-	tr.viewParms.projectionMatrix[1] = 0;
-	tr.viewParms.projectionMatrix[5] = 2 * zNear / height;
-	tr.viewParms.projectionMatrix[9] = ( ymax + ymin ) / height;	// normally 0
-	tr.viewParms.projectionMatrix[13] = 0;
+	preTransProjectionMatrix[1] = 0;
+	preTransProjectionMatrix[5] = 2 * zNear / height;
+	preTransProjectionMatrix[9] = ( ymax + ymin ) / height;	// normally 0
+	preTransProjectionMatrix[13] = 0;
 
-	tr.viewParms.projectionMatrix[2] = 0;
-	tr.viewParms.projectionMatrix[6] = 0;
-	tr.viewParms.projectionMatrix[10] = -( zFar + zNear ) / depth;
-	tr.viewParms.projectionMatrix[14] = -2 * zFar * zNear / depth;
+	preTransProjectionMatrix[2] = 0;
+	preTransProjectionMatrix[6] = 0;
+	preTransProjectionMatrix[10] = -( zFar + zNear ) / depth;
+	preTransProjectionMatrix[14] = -2 * zFar * zNear / depth;
 
-	tr.viewParms.projectionMatrix[3] = 0;
-	tr.viewParms.projectionMatrix[7] = 0;
-	tr.viewParms.projectionMatrix[11] = -1;
-	tr.viewParms.projectionMatrix[15] = 0;
+	preTransProjectionMatrix[3] = 0;
+	preTransProjectionMatrix[7] = 0;
+	preTransProjectionMatrix[11] = -1;
+	preTransProjectionMatrix[15] = 0;
+
+	myGlMultMatrix(s_flipMatrix, preTransProjectionMatrix, tr.viewParms.projectionMatrix);
 }
 
 /*
@@ -866,7 +869,13 @@ static qboolean SurfIsOffscreen( const drawSurf_t *drawSurf, vec4_t clipDest[128
 		int j;
 		unsigned int pointFlags = 0;
 
-		R_TransformModelToClip( tess.xyz[i], tr.ori.modelViewMatrix, tr.viewParms.projectionMatrix, eye, clip );
+		R_TransformModelToClip(
+			tess.xyz[i],
+			tr.ori.modelMatrix,
+			tr.viewParms.viewMatrix,
+			tr.viewParms.projectionMatrix,
+			eye,
+			clip);
 
 		for ( j = 0; j < 3; j++ )
 		{

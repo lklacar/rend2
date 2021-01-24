@@ -105,7 +105,7 @@ typedef struct orientationr_s {
 	vec3_t		origin;			// in world coordinates
 	matrix3_t	axis;		// orientation in world
 	vec3_t		viewOrigin;		// viewParms->or.origin in local coordinates
-	float		modelViewMatrix[16];
+	float		modelMatrix[16];
 } orientationr_t;
 
 
@@ -577,6 +577,7 @@ typedef struct viewParms_s {
 	cplane_t	portalPlane;		// clip anything behind this if mirroring
 	int			viewportX, viewportY, viewportWidth, viewportHeight;
 	float		fovX, fovY;
+	float		viewMatrix[16];
 	float		projectionMatrix[16];
 	cplane_t	frustum[4];
 	vec3_t		visBounds[2];
@@ -1282,7 +1283,7 @@ void R_AddDrawSurf( surfaceType_t *surface, shader_t *shader, int fogIndex, int 
 #define	CULL_OUT	2		// completely outside the clipping planes
 void R_LocalNormalToWorld (const vec3_t local, vec3_t world);
 void R_LocalPointToWorld (const vec3_t local, vec3_t world);
-void R_WorldNormalToEntity (const vec3_t localVec, vec3_t world);
+void R_WorldNormalToEntity (const float *modelMatrix, const vec3_t localVec, vec3_t world);
 int R_CullLocalBox ( const vec3_t bounds[2]);
 int R_CullPointAndRadius( const vec3_t origin, float radius );
 int R_CullLocalPointAndRadius( const vec3_t origin, float radius );
@@ -1702,8 +1703,8 @@ Ghoul2 Insert End
 =============================================================
 =============================================================
 */
-void	R_TransformModelToClip( const vec3_t src, const float *modelMatrix, const float *projectionMatrix,
-							vec4_t eye, vec4_t dst );
+void	R_TransformModelToClip( const vec3_t src, const float *modelMatrix, const float *viewMatrix,
+							const float *projectionMatrix, vec4_t eye, vec4_t dst );
 void	R_TransformClipToWindow( const vec4_t clip, const viewParms_t *view, vec4_t normalized, vec4_t window );
 
 void	RB_DeformTessGeometry( void );
@@ -1730,6 +1731,18 @@ void	RB_CalcDisintegrateColors( unsigned char *colors );
 void	RB_CalcDiffuseColor( unsigned char *colors );
 void	RB_CalcDiffuseEntityColor( unsigned char *colors );
 void	RB_CalcDisintegrateVertDeform( void );
+
+// Constant buffer types
+struct ViewBuffer {
+	float viewMatrix[16];
+	float projectionMatrix[16];
+	struct
+	{
+		vec4_t originAndRadius;
+		vec3_t color;
+		float padding0;  // To keep 16-byte alignment
+	} lights[MAX_DLIGHTS];
+};
 
 /*
 =============================================================

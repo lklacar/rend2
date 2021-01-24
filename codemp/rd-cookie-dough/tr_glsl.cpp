@@ -133,6 +133,7 @@ struct Light
 
 layout(std140, binding = 0) uniform View
 {
+	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
 	// Keep lights per-view for now until we need to render multiple scenes
 	Light u_Lights[32];
@@ -140,7 +141,7 @@ layout(std140, binding = 0) uniform View
 
 layout(std430, binding = 0) buffer ModelMatrices
 {
-	mat4 u_ModelViewMatrix[];
+	mat4 u_ModelMatrix[];
 };
 
 layout(location = 0) uniform float u_PushConstants[128];
@@ -166,7 +167,7 @@ void main()
 {
 	vec4 position = vec4(in_Position, 1.0);
 #if defined(RENDER_SCENE)
-	position = u_ModelViewMatrix[u_EntityIndex] * position;
+	position = u_ViewMatrix * u_ModelMatrix[u_EntityIndex] * position;
 #endif
 	gl_Position = u_ProjectionMatrix * position;
 
@@ -191,14 +192,10 @@ struct Light
 
 layout(std140, binding = 0) uniform View
 {
+	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
 	// Keep lights per-view for now until we need to render multiple scenes
 	Light u_Lights[32];
-};
-
-layout(std430, binding = 0) buffer ModelMatrices
-{
-	mat4 u_ModelViewMatrix[];
 };
 
 layout(binding = 0) uniform sampler2D u_Texture0;
@@ -248,7 +245,6 @@ void main()
 	vec4 color = vec4(0.0);
 	uint lightIndices = u_LightIndices;
 
-	mat4 modelViewMatrix = u_ModelViewMatrix[u_EntityIndex];
 	while (lightIndices != 0)
 	{
 		int lightIndex = findLSB(lightIndices);
@@ -294,14 +290,23 @@ void main()
 static void GLSL_SkyShader_Init()
 {
 	static constexpr const char VERTEX_SHADER[] = R"(
+struct Light
+{
+	vec4 originAndRadius; // xyz = origin, w = radius
+	vec4 color;
+};
+
 layout(std140, binding = 0) uniform View
 {
+	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
+	// Keep lights per-view for now until we need to render multiple scenes
+	Light u_Lights[32];
 };
 
 layout(std430, binding = 0) buffer ModelMatrices
 {
-	mat4 u_ModelViewMatrix[];
+	mat4 u_ModelMatrix[];
 };
 
 layout(location = 0) in vec3 in_Position;
@@ -311,8 +316,8 @@ layout(location = 0) out vec2 out_TexCoord;
 
 void main()
 {
-	vec4 position = u_ModelViewMatrix[2047] * vec4(in_Position, 1.0);
-	gl_Position = u_ProjectionMatrix * position;
+	vec4 position = u_ModelMatrix[2047] * vec4(in_Position, 1.0);
+	gl_Position = u_ProjectionMatrix * u_ViewMatrix * position;
 	gl_Position.w = gl_Position.z;  // force vertices to far plane
 
 	out_TexCoord = in_TexCoord;

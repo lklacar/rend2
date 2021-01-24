@@ -1362,7 +1362,7 @@ void RB_RenderWorldEffects(void)
 
 	SetViewportAndScissor();
 	qglMatrixMode(GL_MODELVIEW);
-	qglLoadMatrixf(backEnd.viewParms.world.modelViewMatrix);
+	qglLoadMatrixf(backEnd.viewParms.world.modelMatrix);
 
 
 	// Calculate Elapsed Time For Scale Purposes

@@ -700,19 +700,13 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	// clear the z buffer, set the modelview, etc
 	RB_BeginDrawingView ();
 
-	struct ViewBuffer {
-		float projectionMatrix[16];
-		struct
-		{
-			vec4_t originAndRadius;
-			vec3_t color;
-			float padding0;  // To keep 16-byte alignment
-		} lights[MAX_DLIGHTS];
-	};
-
 	ConstantBuffer view2DBuffer = backEnd.viewConstantsBuffer;
 	backEnd.viewConstantsBuffer = GpuBuffers_AllocFrameConstantDataMemory(nullptr, sizeof(ViewBuffer));
 	ViewBuffer* viewBufferData = reinterpret_cast<ViewBuffer*>(GpuBuffers_Map(&backEnd.viewConstantsBuffer));
+	Com_Memcpy(
+		viewBufferData->viewMatrix,
+		backEnd.viewParms.viewMatrix,
+		sizeof(viewBufferData->viewMatrix));
 	Com_Memcpy(
 		viewBufferData->projectionMatrix,
 		backEnd.viewParms.projectionMatrix,
@@ -738,9 +732,9 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	{
 		orientationr_t ori = {};
 		R_RotateForEntity(backEnd.refdef.entities + i, &backEnd.viewParms, &ori);
-		Com_Memcpy(modelMatrices + 16 * i, ori.modelViewMatrix, sizeof(ori.modelViewMatrix));
+		Com_Memcpy(modelMatrices + 16 * i, ori.modelMatrix, sizeof(ori.modelMatrix));
 	}
-	Com_Memcpy(modelMatrices + 16 * REFENTITYNUM_WORLD, backEnd.viewParms.world.modelViewMatrix, sizeof(float) * 16);
+	Com_Memcpy(modelMatrices + 16 * REFENTITYNUM_WORLD, backEnd.viewParms.world.modelMatrix, sizeof(float) * 16);
 
 	GpuBuffers_Unmap(&backEnd.modelsStorageBuffer);
 

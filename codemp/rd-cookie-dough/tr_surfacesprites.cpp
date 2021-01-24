@@ -1425,7 +1425,7 @@ static void RB_DrawEffectSurfaceSprites( shaderStage_t *stage, shaderCommands_t 
 }
 
 extern void R_WorldToLocal (vec3_t world, vec3_t localVec) ;
-extern float preTransEntMatrix[16], invEntMatrix[16];
+extern float entModelMatrix[16], invEntMatrix[16];
 extern void R_InvertMatrix(float *sourcemat, float *destmat);
 
 void RB_DrawSurfaceSprites( shaderStage_t *stage, shaderCommands_t *input)
@@ -1471,8 +1471,8 @@ void RB_DrawSurfaceSprites( shaderStage_t *stage, shaderCommands_t *input)
 		else
 		{	// Drawing an entity, so we need to transform the viewparms to the model's coordinate system
 //			R_WorldPointToEntity (backEnd.viewParms.ori.origin, ssViewOrigin);
-			R_WorldNormalToEntity (backEnd.viewParms.ori.axis[1], ssViewRight);
-			R_WorldNormalToEntity (backEnd.viewParms.ori.axis[2], ssViewUp);
+			R_WorldNormalToEntity (backEnd.ori.modelMatrix, backEnd.viewParms.ori.axis[1], ssViewRight);
+			R_WorldNormalToEntity (backEnd.ori.modelMatrix, backEnd.viewParms.ori.axis[2], ssViewUp);
 			VectorCopy(backEnd.ori.viewOrigin, ssViewOrigin);
 //			R_WorldToLocal(backEnd.viewParms.ori.axis[1], ssViewRight);
 //			R_WorldToLocal(backEnd.viewParms.ori.axis[2], ssViewUp);

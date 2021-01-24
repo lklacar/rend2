@@ -1410,7 +1410,18 @@ void R_Init( void ) {
 		0.0f, 0.0f, 2.0f, 0.0f,
 		-1.0f, 1.0f, -1.0f, 1.0f
 	};
-	tr.viewConstantsBuffer = GpuBuffers_AllocConstantDataMemory(orthoMatrix, sizeof(float) * 16);
+
+	ViewBuffer viewBufferData = {};
+	viewBufferData.viewMatrix[0] = 1.0f;
+	viewBufferData.viewMatrix[5] = 1.0f;
+	viewBufferData.viewMatrix[10] = 1.0f;
+	viewBufferData.viewMatrix[15] = 1.0f;
+	Com_Memcpy(
+		viewBufferData.projectionMatrix,
+		orthoMatrix,
+		sizeof(viewBufferData.projectionMatrix));
+
+	tr.viewConstantsBuffer = GpuBuffers_AllocConstantDataMemory(&viewBufferData, sizeof(viewBufferData));
 	backEnd.viewConstantsBuffer = tr.viewConstantsBuffer;
 
 	R_InitImages();
