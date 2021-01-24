@@ -104,7 +104,8 @@ static void RenderContext_Draw(const DrawItem* drawItem)
 
 			pushConstants[2] = layer->alphaTestValue;
 			pushConstants[3] = (float)layer->alphaTestFunc;
-			qglUniform1fv(0, 4, pushConstants);
+			pushConstants[4] = (float)layer->dlights;
+			qglUniform1fv(0, 5, pushConstants);
 		}
 
 		if (layer->constantBuffersUsed)
@@ -138,7 +139,7 @@ static void RenderContext_Draw(const DrawItem* drawItem)
 
 		GL_State(layer->stateGroup.stateBits);
 
-		int strides[] = {16, 0, 4, 8, 8};
+		int strides[] = {16, 16, 4, 8, 8};
 		for ( int attribIndex = 0; attribIndex < 5; ++attribIndex)
 		{
 			const uint32_t attribBit = 1u << attribIndex;

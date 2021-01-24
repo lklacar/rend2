@@ -241,8 +241,21 @@ RB_LightingPass
 Perform dynamic lighting with another rendering pass
 ===================
 */
-static void RB_LightingPass( DrawItem* drawItem, const VertexBuffer* positionsBuffer ) {
-	if (backEnd.refdef.num_dlights == 0)
+static void RB_LightingPass(
+	DrawItem* drawItem,
+	const VertexBuffer* positionsBuffer,
+	const VertexBuffer* normalsBuffer ) {
+	if (tess.shader->sort > SS_OPAQUE)
+	{
+		return;
+	}
+
+	if (tess.shader->surfaceFlags & (SURF_NODLIGHT | SURF_SKY))
+	{
+		return;
+	}
+
+	if (backEnd.refdef.num_dlights == 0 || tess.dlightBits == 0)
 	{
 		return;
 	}
@@ -292,15 +305,18 @@ static void RB_LightingPass( DrawItem* drawItem, const VertexBuffer* positionsBu
 
 		DrawItem::Layer* layer = drawItem->layers + drawItem->layerCount++;
 
+		*layer = {};
 		layer->shaderProgram = GLSL_MainShader_GetHandle();
-		layer->shaderOptions = MAIN_SHADER_RENDER_SCENE;
-		layer->enabledVertexAttributes = 1;
+		layer->shaderOptions = MAIN_SHADER_RENDER_SCENE | MAIN_SHADER_RENDER_LIGHT_ONLY;
+		layer->enabledVertexAttributes = 3;
 		layer->vertexBuffers[0] = *positionsBuffer;
+		layer->vertexBuffers[1] = *normalsBuffer;
 		layer->storageBuffersUsed = 1;
 		layer->storageBuffers[0] = backEnd.modelsStorageBuffer;
 		layer->constantBuffersUsed = 1;
 		layer->constantBuffers[0] = backEnd.viewConstantsBuffer;
 		layer->stateGroup.stateBits = GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL;
+		layer->dlights = tess.dlightBits;
 
 		// Is it bad to always draw additive lighting?
 		// Draw the lit mesh
@@ -1102,22 +1118,21 @@ void RB_StageIteratorGeneric( void )
 	const VertexBuffer positionsBuffer = GpuBuffers_AllocFrameVertexDataMemory(
 		input->xyz, sizeof(input->xyz[0]) * input->numVertexes);
 
+	const VertexBuffer normalsBuffer = GpuBuffers_AllocFrameVertexDataMemory(
+		input->normal, sizeof(input->normal[0]) * input->numVertexes);
+
 	//
 	// call shader function
 	//
 	RB_IterateStagesGeneric( &drawItem, input, &positionsBuffer );
 
-	RenderContext_AddDrawItem(drawItem);
-
-#if defined(COOKIE)
 	//
 	// now do any dynamic lighting needed
 	//
-	if ( tess.dlightBits && tess.shader->sort <= SS_OPAQUE
-		&& !(tess.shader->surfaceFlags & (SURF_NODLIGHT | SURF_SKY) ) ) {
-		RB_LightingPass(&drawItem, &positionsBuffer);
-	}
+	RB_LightingPass(&drawItem, &positionsBuffer, &normalsBuffer);
 
+	RenderContext_AddDrawItem(drawItem);
+#if defined(COOKIE)
 	//
 	// now do fog
 	//
