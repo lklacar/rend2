@@ -1337,7 +1337,6 @@ uint64_t GL_GetCullState( int cullType );
 #define GLS_POLYGON_OFFSET_TRUE					0x01000000ULL
 
 #define GLS_DEFAULT			GLS_DEPTHMASK_TRUE
-#define GLS_ALPHA			(GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA)
 
 void	RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *data, int client, qboolean dirty);
 void	RE_UploadCinematic (int cols, int rows, const byte *data, int client, qboolean dirty);
