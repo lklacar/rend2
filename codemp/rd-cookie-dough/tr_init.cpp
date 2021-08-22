@@ -443,8 +443,13 @@ static void InitOpenGL( void )
 		}
 
 #if defined(_DEBUG)
-		qglEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB);
-		qglDebugMessageCallbackARB(OnGLDebugMessage, nullptr);
+		int contextFlags = 0;
+		qglGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
+		if (contextFlags & GL_CONTEXT_FLAG_DEBUG_BIT)
+		{
+			qglEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+			qglDebugMessageCallback(OnGLDebugMessage, nullptr);
+		}
 #endif
 
 		Com_Printf( "GL_RENDERER: %s\n", (char *)qglGetString (GL_RENDERER) );
