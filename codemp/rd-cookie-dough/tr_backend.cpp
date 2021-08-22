@@ -253,6 +253,22 @@ void GL_State( uint64_t stateBits )
 		return;
 	}
 
+
+	//
+	// depthtest
+	//
+	if ( diff & GLS_DEPTHTEST_DISABLE )
+	{
+		if ( stateBits & GLS_DEPTHTEST_DISABLE )
+		{
+			qglDisable( GL_DEPTH_TEST );
+		}
+		else
+		{
+			qglEnable( GL_DEPTH_TEST );
+		}
+	}
+
 	//
 	// check depthFunc bits
 	//
@@ -265,6 +281,21 @@ void GL_State( uint64_t stateBits )
 		else
 		{
 			qglDepthFunc( GL_LEQUAL );
+		}
+	}
+
+	//
+	// check depthmask
+	//
+	if ( diff & GLS_DEPTHMASK_TRUE )
+	{
+		if ( stateBits & GLS_DEPTHMASK_TRUE )
+		{
+			qglDepthMask( GL_TRUE );
+		}
+		else
+		{
+			qglDepthMask( GL_FALSE );
 		}
 	}
 
@@ -354,21 +385,6 @@ void GL_State( uint64_t stateBits )
 	}
 
 	//
-	// check depthmask
-	//
-	if ( diff & GLS_DEPTHMASK_TRUE )
-	{
-		if ( stateBits & GLS_DEPTHMASK_TRUE )
-		{
-			qglDepthMask( GL_TRUE );
-		}
-		else
-		{
-			qglDepthMask( GL_FALSE );
-		}
-	}
-
-	//
 	// fill/line mode
 	//
 	if ( diff & GLS_POLYMODE_LINE )
@@ -380,21 +396,6 @@ void GL_State( uint64_t stateBits )
 		else
 		{
 			qglPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-		}
-	}
-
-	//
-	// depthtest
-	//
-	if ( diff & GLS_DEPTHTEST_DISABLE )
-	{
-		if ( stateBits & GLS_DEPTHTEST_DISABLE )
-		{
-			qglDisable( GL_DEPTH_TEST );
-		}
-		else
-		{
-			qglEnable( GL_DEPTH_TEST );
 		}
 	}
 
