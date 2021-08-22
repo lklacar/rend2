@@ -243,6 +243,12 @@ void RE_AddRefEntityToScene( const refEntity_t *ent ) {
 		Com_Error( ERR_DROP, "RE_AddRefEntityToScene: bad reType %i", ent->reType );
 	}
 
+#if !defined(COOKIE)
+	if (ent->renderfx & RF_DISTORTION) {
+		return;
+	}
+#endif
+
 	backEndData->entities[r_numentities].e = *ent;
 	backEndData->entities[r_numentities].lightingCalculated = qfalse;
 
