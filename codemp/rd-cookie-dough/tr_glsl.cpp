@@ -128,7 +128,7 @@ static void GLSL_MainShader_Init()
 struct Light
 {
 	vec4 originAndRadius; // xyz = origin, w = radius
-	vec3 color;
+	vec4 color;
 };
 
 layout(std140, binding = 0) uniform View
@@ -169,8 +169,7 @@ void main()
 {
 	vec4 position = vec4(in_Position, 1.0);
 #if defined(RENDER_SCENE)
-	vec4 positionWS = u_ModelMatrix[u_EntityIndex] * position;
-	position = u_ViewMatrix * positionWS;
+	position = u_ViewMatrix * u_ModelMatrix[u_EntityIndex] * position;
 #endif
 	gl_Position = u_ProjectionMatrix * position;
 
@@ -180,9 +179,8 @@ void main()
 #if defined(MULTITEXTURE)
 	out_TexCoord1 = in_TexCoord1;
 #endif
-#elif defined(RENDER_SCENE)
-	out_PositionWS = positionWS.xyz;
-	out_Normal = in_Normal;
+#else
+	out_PositionWS = position;
 #endif
 }
 )";
@@ -191,7 +189,7 @@ void main()
 struct Light
 {
 	vec4 originAndRadius; // xyz = origin, w = radius
-	vec3 color;
+	vec4 color;
 };
 
 layout(std140, binding = 0) uniform View
@@ -258,25 +256,16 @@ void main()
 
 		vec3 modelToLightDiff = light.originAndRadius.xyz - in_PositionWS;
 		vec3 L = normalize(modelToLightDiff);
+		float d = len(modelToLightDiff);
 
 		float NdotL = dot(N, L);
 		if (NdotL > 0.0)
 		{
-			float radius = light.originAndRadius.w;
-			vec3 lightColor = light.color.rgb;
-
-			float radiusSquared = radius * radius;
-			float distSquared = dot(modelToLightDiff, modelToLightDiff);
-			float dist = sqrt(distSquared);
-
-			float attenuation = 1.0 / distSquared;
-			color.rgb += radius * NdotL * lightColor * attenuation;
+			color += light.originAndRadius.w * light.color * NdotL / (d * d);
 		}
 
 		lightIndices &= ~(1u << lightIndex);
 	}
-
-	color.a = 0.0;
 #endif
 	out_FragColor = color;
 }
@@ -302,12 +291,6 @@ void main()
 		program->permutations[MAIN_SHADER_RENDER_SCENE | MAIN_SHADER_MULTITEXTURE] =
 			GLSL_CreateProgram(VERTEX_SHADER, FRAGMENT_SHADER, defines, 2);
 	}
-
-	{
-		const char *defines[] = {"RENDER_SCENE", "RENDER_LIGHT_ONLY"};
-		program->permutations[MAIN_SHADER_RENDER_SCENE | MAIN_SHADER_RENDER_LIGHT_ONLY] =
-			GLSL_CreateProgram(VERTEX_SHADER, FRAGMENT_SHADER, defines, 2);
-	}
 }
 
 static void GLSL_SkyShader_Init()
@@ -316,7 +299,7 @@ static void GLSL_SkyShader_Init()
 struct Light
 {
 	vec4 originAndRadius; // xyz = origin, w = radius
-	vec3 color;
+	vec4 color;
 };
 
 layout(std140, binding = 0) uniform View
