@@ -878,6 +878,9 @@ static void RB_IterateStagesGeneric( DrawItem* drawItem, shaderCommands_t *input
 		UseGLFog = true;
 	}
 
+	const bool distortionEffect = ((tess.shader == tr.distortionShader) ||
+		(backEnd.currentEntity && (backEnd.currentEntity->e.renderfx & RF_DISTORTION)));
+
 	for ( stage = 0; stage < input->shader->numUnfoggedPasses; stage++ )
 	{
 		shaderStage_t *pStage = &tess.xstages[stage];
@@ -979,8 +982,6 @@ static void RB_IterateStagesGeneric( DrawItem* drawItem, shaderCommands_t *input
 			//
 			// set textures
 			//
-			const bool distortionEffect = ((tess.shader == tr.distortionShader) ||
-				(backEnd.currentEntity && (backEnd.currentEntity->e.renderfx & RF_DISTORTION)));
 			if (distortionEffect)
 			{
 				//special distortion effect -rww
