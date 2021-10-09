@@ -1,5 +1,77 @@
 #include "tr_gpucontext.h"
 
+/*
+TODO
+====
+Move shader logic to glsl
+
+Vertex shader:
+* Vertex deformation
+  - wave
+  - normal
+  - move
+  - bulge
+  - projectionShadow
+  - autoSprite
+  - autoSprite2
+  - text
+  - disintegration1
+  - disintegration2
+* tcgen (per stage)
+  - identity (texcoord = 0)
+  - texture (texcoord = tc0)
+  - lightmap0 (texcoord = tc1)
+  - lightmap1 (texcoord = tc2)
+  - lightmap2 (texcoord = tc3)
+  - lightmap3 (texcoord = tc4)
+  - vector (texcoord = dot product)
+  - fog (texcoord = some kind of thing for fog...)
+  - environment mapped (texcoord = some kind of reflection thing)
+* tcmod (per stage)
+  - turbulent
+  - entity translate
+  - scroll
+  - scale
+  - stretch
+  - transform (mat2 multiplication)
+  - rotate
+* vertex animation
+* skeletal animation
+
+Fragment shader:
+* color computation (per stage)
+  - disintegration1
+  - disintegration2
+  - volumetric
+  - colorgen:
+    > identity (color = white)
+	> idntity lighting (color = identity light byte)
+	> lighting diffuse (lambertian lighting + light grid)
+	> lighting diffuse + entity color (lighting diffuse + entity color)
+	> exact vertex (color = entity color)
+	> const (color = const color)
+	> vertex (color = entity color * identity light)
+	> one minus vertex (color = 1 - vertex)
+	> fog (color = const with fog color)
+	> waveform (color = some kind of wave form)
+    > entity (color = entity color)
+	> one minus entity (color = 1 - entity)
+	> lightmapstyle (color = from lightmap style)
+  - alphagen (per stage)
+    > identity (alpha = 255 sometimes)
+	> const (alpha = const value)
+	> waveform (alpha = some kind of wave form)
+	> lighting specular (alpha = some kind of blinn-phong specular)
+	> entity (alpha = entity alpha)
+	> one minus entity
+	> vertex (alpha = entity alpha)
+	> one minus vertex
+	> portal (alpha = fade based on distance to camera)
+	> blend (unused?)
+  - force const alpha
+  - fog modulation (to make things fade out in deeper fog, based on fog tc or emulation of glFog) (per stage)
+*/
+
 struct VertexBuffers
 {
 	int vertexBuffer;
