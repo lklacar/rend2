@@ -1109,35 +1109,3 @@ void NPC_Use( gentity_t *self, gentity_t *other, gentity_t *activator )
 
 	RestoreNPCGlobals();
 }
-
-void NPC_CheckPlayerAim( void )
-{
-	//FIXME: need appropriate dialogue
-	/*
-	gentity_t *player = &g_entities[0];
-
-	if ( player && player->client && player->client->ps.weapon > (int)(WP_NONE) && player->client->ps.weapon < (int)(WP_TRICORDER) )
-	{//player has a weapon ready
-		if ( g_crosshairEntNum == NPC->s.number && level.time - g_crosshairEntTime < 200
-			&& g_crosshairSameEntTime >= 3000 && g_crosshairEntDist < 256 )
-		{//if the player holds the crosshair on you for a few seconds
-			//ask them what the fuck they're doing
-			G_AddVoiceEvent( NPC, Q_irand( EV_FF_1A, EV_FF_1C ), 0 );
-		}
-	}
-	*/
-}
-
-void NPC_CheckAllClear( void )
-{
-	//FIXME: need to make this happen only once after losing enemies, not over and over again
-	/*
-	if ( NPC->client && !NPC->enemy && level.time - teamLastEnemyTime[NPC->client->playerTeam] > 10000 )
-	{//Team hasn't seen an enemy in 10 seconds
-		if ( !Q_irand( 0, 2 ) )
-		{
-			G_AddVoiceEvent( NPC, Q_irand(EV_SETTLE1, EV_SETTLE3), 3000 );
-		}
-	}
-	*/
-}
