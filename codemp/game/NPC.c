@@ -1329,6 +1329,7 @@ NPC Behavior state thinking
 */
 void NPC_ExecuteBState ( gentity_t *self)//, int msec )
 {
+#if 0
 	bState_t	bState;
 
 	NPC_HandleAIFlags();
@@ -1436,18 +1437,23 @@ void NPC_ExecuteBState ( gentity_t *self)//, int msec )
 
 	// run the bot through the server like it was a real client
 	//=== Save the ucmd for the second no-think Pmove ============================
+#endif
 	NPCS.ucmd.serverTime = level.time - 50;
 	memcpy( &NPCS.NPCInfo->last_ucmd, &NPCS.ucmd, sizeof( usercmd_t ) );
 	if ( !NPCS.NPCInfo->attackHoldTime )
 	{
-		NPCS.NPCInfo->last_ucmd.buttons &= ~(BUTTON_ATTACK|BUTTON_ALT_ATTACK);//so we don't fire twice in one think
+		//so we don't fire twice in one think
+		NPCS.NPCInfo->last_ucmd.buttons &= ~(BUTTON_ATTACK | BUTTON_ALT_ATTACK);
 	}
 
+#if 0
 	NPC_CheckAttackScript();
 	NPC_KeepCurrentFacing();
+#endif
 
 	if ( !NPCS.NPC->next_roff_time || NPCS.NPC->next_roff_time < level.time )
-	{//If we were following a roff, we don't do normal pmoves.
+	{
+		//If we were following a roff, we don't do normal pmoves.
 		ClientThink( NPCS.NPC->s.number, &NPCS.ucmd );
 	}
 	else
@@ -1527,7 +1533,6 @@ void NPC_Think ( gentity_t *self)//, int msec )
 {
 	vec3_t	oldMoveDir;
 	int i = 0;
-	gentity_t *player;
 
 	self->nextthink = level.time + FRAMETIME;
 
