@@ -27,6 +27,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "anims.h"
 #include "say.h"
 #include "icarus/Q3_Interface.h"
+#include <varargs.h>
 
 extern vec3_t playerMins;
 extern vec3_t playerMaxs;
@@ -55,6 +56,179 @@ void pitch_roll_for_slope( gentity_t *forwhom, vec3_t pass_slope );
 extern void GM_Dying( gentity_t *self );
 
 extern int eventClearTime;
+
+//=======================================================================
+typedef enum btNodeType_e
+{
+	BT_NODE_TYPE_SELECTOR,
+	BT_NODE_TYPE_SEQUENCE,
+	BT_NODE_TYPE_DECORATOR,
+	BT_NODE_TYPE_LEAF,
+} btNodeType_t;
+
+typedef enum btNodeState_e
+{
+	BT_NODE_STATE_RUNNING,
+	BT_NODE_STATE_FAILED,
+	BT_NODE_STATE_SUCCEEDED,
+} btNodeState_t;
+
+typedef struct btNode_s
+{
+	btNodeType_t nodeType;
+} btNode_t;
+
+typedef struct btSelectorNode_s
+{
+	btNodeType_t nodeType;
+
+	int numChildren;
+	int activeChildIndex;
+	btNode_t **children;
+} btSelectorNode_t;
+
+typedef struct btSequenceNode_s
+{
+	btNodeType_t nodeType;
+
+	int numChildren;
+	int activeChildIndex;
+	btNode_t **children;
+} btSequenceNode_t;
+
+typedef struct btDecoratorNode_s
+{
+	btNodeType_t nodeType;
+
+	btNodeState_t(*execute)(void);
+
+	btNode_t *child;
+} btDecoratorNode_t;
+
+typedef struct btLeafNode_s
+{
+	btNodeType_t nodeType;
+
+	btNodeState_t(*execute)(void);
+} btLeafNode_t;
+
+typedef struct behaviorTree_s
+{
+	btNode_t *root;
+	btNode_t *activeNode;
+} behaviorTree_t;
+
+static btNode_t *NPC_BT_CreateSelectorNode(int numChildren, ...)
+{
+	btSelectorNode_t *node;
+	trap->TrueMalloc(&node, sizeof(btSelectorNode_t));
+
+	node->nodeType = BT_NODE_TYPE_SELECTOR;
+	node->numChildren = numChildren;
+	node->activeChildIndex = 0;
+
+	size_t arraySize = sizeof(btNode_t *) * numChildren;
+	trap->TrueMalloc((void **)&node->children, arraySize);
+
+	va_list args;
+	va_start(args, numChildren);
+	for (int i = 0; i < numChildren; ++i)
+	{
+		node->children[i] = va_arg(args, btNode_t *);
+	}
+	va_end(args);
+
+	return (btNode_t *)node;
+}
+
+static btNode_t *NPC_BT_CreateSequenceNode(int numChildren, ...)
+{
+	btSequenceNode_t *node;
+	trap->TrueMalloc(&node, sizeof(btSequenceNode_t));
+
+	node->nodeType = BT_NODE_TYPE_SEQUENCE;
+	node->numChildren = numChildren;
+	node->activeChildIndex = 0;
+
+	size_t arraySize = sizeof(btNode_t *) * numChildren;
+	trap->TrueMalloc((void **)&node->children, arraySize);
+
+	va_list args;
+	va_start(args, numChildren);
+	for (int i = 0; i < numChildren; ++i)
+	{
+		node->children[i] = va_arg(args, btNode_t *);
+	}
+	va_end(args);
+
+	return (btNode_t *)node;
+}
+
+static btNode_t *NPC_BT_CreateDecoratorNode(btNodeState_t(*fn)(void), btNode_t *child)
+{
+	btDecoratorNode_t *node;
+	trap->TrueMalloc(&node, sizeof(btDecoratorNode_t));
+
+	node->nodeType = BT_NODE_TYPE_DECORATOR;
+	node->execute = fn;
+	node->child = child;
+
+	return (btNode_t *)node;
+}
+
+static btNode_t *NPC_BT_CreateLeafNode(btNodeState_t(*fn)(void))
+{
+	btLeafNode_t *node;
+	trap->TrueMalloc(&node, sizeof(btLeafNode_t));
+
+	node->nodeType = BT_NODE_TYPE_LEAF;
+	node->execute = fn;
+
+	return (btNode_t *)node;
+}
+
+static void NPC_BT_FreeNode(btNode_t *btNode)
+{
+	switch (btNode->nodeType)
+	{
+	case BT_NODE_TYPE_SELECTOR:
+	{
+		btSelectorNode_t *btSelectorNode = (btSelectorNode_t *)btNode;
+		for (int i = 0; i < btSelectorNode->numChildren; ++i)
+		{
+			NPC_BT_FreeNode(btSelectorNode->children[i]);
+		}
+		trap->TrueFree((void **)&btSelectorNode->children);
+		break;
+	}
+
+	case BT_NODE_TYPE_SEQUENCE:
+	{
+		btSequenceNode_t *btSequenceNode = (btSequenceNode_t *)btNode;
+		for (int i = 0; i < btSequenceNode->numChildren; ++i)
+		{
+			NPC_BT_FreeNode(btSequenceNode->children[i]);
+		}
+		trap->TrueFree((void **)&btSequenceNode->children);
+		break;
+	}
+
+	case BT_NODE_TYPE_DECORATOR:
+	{
+		btDecoratorNode_t *btDecoratorNode = (btDecoratorNode_t *)btNode;
+		NPC_BT_FreeNode(btDecoratorNode->child);
+		break;
+	}
+
+	default:
+		break;
+	}
+
+	trap->TrueFree(&btNode);
+}
+
+static behaviorTree_t behaviorTree;
+//=======================================================================
 
 void CorpsePhysics( gentity_t *self )
 {
@@ -1317,6 +1491,135 @@ void NPC_RunBehavior( int team, int bState )
 	}
 }
 
+static void NPC_ResetBehaviorTreeNode(btNode_t *btNode)
+{
+	switch (btNode->nodeType)
+	{
+	case BT_NODE_TYPE_SELECTOR:
+	{
+		btSelectorNode_t *btSelectorNode = (btSelectorNode_t *)btNode;
+		btSelectorNode->activeChildIndex = 0;
+
+		for (int i = 0; i < btSelectorNode->numChildren; ++i)
+		{
+			NPC_ResetBehaviorTreeNode(btSelectorNode->children[i]);
+		}
+		break;
+	}
+
+	case BT_NODE_TYPE_SEQUENCE:
+	{
+		btSequenceNode_t *btSequenceNode = (btSequenceNode_t *)btNode;
+		btSequenceNode->activeChildIndex = 0;
+
+		for (int i = 0; i < btSequenceNode->numChildren; ++i)
+		{
+			NPC_ResetBehaviorTreeNode(btSequenceNode->children[i]);
+		}
+		break;
+	}
+
+	default:
+		break;
+	}
+}
+
+static void NPC_ResetBehaviorTree(behaviorTree_t *behaviorTree)
+{
+	NPC_ResetBehaviorTreeNode(behaviorTree->root);
+}
+
+static btNodeState_t NPC_RunBehaviorTreeNode(behaviorTree_t *behaviorTree, btNode_t *btNode)
+{
+	switch (btNode->nodeType)
+	{
+	case BT_NODE_TYPE_SELECTOR:
+	{
+		btSelectorNode_t *btSelectorNode = (btSelectorNode_t *)btNode;
+		
+		while (1)
+		{
+			btNode_t *activeNode = btSelectorNode->children[btSelectorNode->activeChildIndex];
+			btNodeState_t nodeState = NPC_RunBehaviorTreeNode(behaviorTree, activeNode);
+
+			if (nodeState != BT_NODE_STATE_FAILED)
+			{
+				return nodeState;
+			}
+
+			if (++btSelectorNode->activeChildIndex == btSelectorNode->numChildren)
+			{
+				return BT_NODE_STATE_FAILED;
+			}
+		}
+	}
+
+	case BT_NODE_TYPE_SEQUENCE:
+	{
+		btSequenceNode_t *btSequenceNode = (btSequenceNode_t *)btNode;
+
+		while (1)
+		{
+			btNode_t *activeNode = btSequenceNode->children[btSequenceNode->activeChildIndex];
+			btNodeState_t nodeState = NPC_RunBehaviorTreeNode(behaviorTree, activeNode);
+
+			if (nodeState != BT_NODE_STATE_SUCCEEDED)
+			{
+				return nodeState;
+			}
+
+			if (++btSequenceNode->activeChildIndex == btSequenceNode->numChildren)
+			{
+				return BT_NODE_STATE_SUCCEEDED;
+			}
+		}
+	}
+
+	case BT_NODE_TYPE_DECORATOR:
+	{
+		btDecoratorNode_t *btDecoratorNode = (btDecoratorNode_t *)btNode;
+		return btDecoratorNode->execute();
+	}
+
+	case BT_NODE_TYPE_LEAF:
+	{
+		btLeafNode_t *btLeafNode = (btLeafNode_t *)btNode;
+		return btLeafNode->execute();
+	}
+
+	default:
+		assert(!"Invalid node type");
+		return BT_NODE_STATE_SUCCEEDED;;
+	}
+}
+
+void NPC_RunBehaviorTree(behaviorTree_t *bt)
+{
+	btNodeState_t state = NPC_RunBehaviorTreeNode(bt, bt->root); 
+	if (state != BT_NODE_STATE_RUNNING)
+	{
+		NPC_ResetBehaviorTree(bt);
+	}
+}
+
+btNodeState_t NPC_BT_FoundEnemy(void)
+{
+	int NPC_FindNearestEnemy(gentity_t* ent);
+	const int enemyEntityId = NPC_FindNearestEnemy(NPCS.NPC);
+	if (enemyEntityId == -1)
+	{
+		return BT_NODE_STATE_FAILED;
+	}
+
+	return BT_NODE_STATE_SUCCEEDED;
+}
+
+btNodeState_t NPC_BT_FireWeapon(void)
+{
+	NPCS.ucmd.buttons |= BUTTON_ATTACK;
+	return BT_NODE_STATE_SUCCEEDED;
+}
+
 /*
 ===============
 NPC_ExecuteBState
@@ -1438,6 +1741,8 @@ void NPC_ExecuteBState ( gentity_t *self)//, int msec )
 	// run the bot through the server like it was a real client
 	//=== Save the ucmd for the second no-think Pmove ============================
 #endif
+	NPC_RunBehaviorTree(&behaviorTree);
+
 	NPCS.ucmd.serverTime = level.time - 50;
 	memcpy( &NPCS.NPCInfo->last_ucmd, &NPCS.ucmd, sizeof( usercmd_t ) );
 	if ( !NPCS.NPCInfo->attackHoldTime )
@@ -1670,6 +1975,12 @@ void NPC_Think ( gentity_t *self)//, int msec )
 void NPC_InitGame( void )
 {
 	NPC_LoadParms();
+
+	btNode_t *findEnemyNode = NPC_BT_CreateLeafNode(NPC_BT_FoundEnemy);
+	btNode_t *fireNode = NPC_BT_CreateLeafNode(NPC_BT_FireWeapon);
+
+	behaviorTree.activeNode = NULL;
+	behaviorTree.root = NPC_BT_CreateSequenceNode(2, findEnemyNode, fireNode);
 }
 
 void NPC_SetAnim(gentity_t *ent, int setAnimParts, int anim, int setAnimFlags)

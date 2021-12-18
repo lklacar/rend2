@@ -766,11 +766,14 @@ qboolean G_ClearLOS( gentity_t *self, const vec3_t start, const vec3_t end )
 	//FIXME: ENTITYNUM_NONE ok?
 	trap->Trace ( &tr, start, NULL, NULL, end, ENTITYNUM_NONE, CONTENTS_OPAQUE/*CONTENTS_SOLID*//*(CONTENTS_SOLID|CONTENTS_MONSTERCLIP)*/, qfalse, 0, 0 );
 	while ( tr.fraction < 1.0 && traceCount < 3 )
-	{//can see through 3 panes of glass
+	{
+		//can see through 3 panes of glass
 		if ( tr.entityNum < ENTITYNUM_WORLD )
 		{
-			if ( &g_entities[tr.entityNum] != NULL && (g_entities[tr.entityNum].r.svFlags&SVF_GLASS_BRUSH) )
-			{//can see through glass, trace again, ignoring me
+			const gentity_t* hitEntity = g_entities + tr.entityNum;
+			if ( hitEntity != NULL && (hitEntity->r.svFlags&SVF_GLASS_BRUSH) )
+			{
+				//can see through glass, trace again, ignoring me
 				trap->Trace ( &tr, tr.endpos, NULL, NULL, end, tr.entityNum, MASK_OPAQUE, qfalse, 0, 0 );
 				traceCount++;
 				continue;
