@@ -3361,6 +3361,23 @@ void Cmd_AddBot_f( gentity_t *ent ) {
 	trap->SendServerCommand( ent-g_entities, va( "print \"%s.\n\"", G_GetStringEdString( "MP_SVGAME", "ONLY_ADD_BOTS_AS_SERVER" ) ) );
 }
 
+void CP_Add(const vec3_t origin, int flags);
+static void Cmd_AddCombatPoint_f(gentity_t *ent)
+{
+	if (trap->Argc() != 2)
+	{
+		trap->SendServerCommand(ent->s.number, "print \"addcp <flags>\n\"");
+		return;
+	}
+
+	char arg1[MAX_STRING_CHARS];
+	trap->Argv(1, arg1, sizeof(arg1));
+
+	CP_Add(ent->s.origin, atoi(arg1));
+
+	trap->SendServerCommand(ent->s.number, va("print \"Added combat point at (%.3f %.3f %.3f)\n\"", ent->s.origin[0], ent->s.origin[1], ent->s.origin[2]));
+}
+
 /*
 =================
 ClientCommand
@@ -3383,6 +3400,7 @@ int cmdcmp( const void *a, const void *b ) {
 
 command_t commands[] = {
 	{ "addbot",				Cmd_AddBot_f,				0 },
+	{ "addcp",				Cmd_AddCombatPoint_f,		0 },
 	{ "callteamvote",		Cmd_CallTeamVote_f,			CMD_NOINTERMISSION },
 	{ "callvote",			Cmd_CallVote_f,				CMD_NOINTERMISSION },
 	{ "debugBMove_Back",	Cmd_BotMoveBack_f,			CMD_CHEAT|CMD_ALIVE },

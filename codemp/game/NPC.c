@@ -29,6 +29,8 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "icarus/Q3_Interface.h"
 #include <varargs.h>
 
+#include "npc_behaviortree.h"
+
 extern vec3_t playerMins;
 extern vec3_t playerMaxs;
 extern void G_SoundOnEnt( gentity_t *ent, soundChannel_t channel, const char *soundPath );
@@ -56,179 +58,6 @@ void pitch_roll_for_slope( gentity_t *forwhom, vec3_t pass_slope );
 extern void GM_Dying( gentity_t *self );
 
 extern int eventClearTime;
-
-//=======================================================================
-typedef enum btNodeType_e
-{
-	BT_NODE_TYPE_SELECTOR,
-	BT_NODE_TYPE_SEQUENCE,
-	BT_NODE_TYPE_DECORATOR,
-	BT_NODE_TYPE_LEAF,
-} btNodeType_t;
-
-typedef enum btNodeState_e
-{
-	BT_NODE_STATE_RUNNING,
-	BT_NODE_STATE_FAILED,
-	BT_NODE_STATE_SUCCEEDED,
-} btNodeState_t;
-
-typedef struct btNode_s
-{
-	btNodeType_t nodeType;
-} btNode_t;
-
-typedef struct btSelectorNode_s
-{
-	btNodeType_t nodeType;
-
-	int numChildren;
-	int activeChildIndex;
-	btNode_t **children;
-} btSelectorNode_t;
-
-typedef struct btSequenceNode_s
-{
-	btNodeType_t nodeType;
-
-	int numChildren;
-	int activeChildIndex;
-	btNode_t **children;
-} btSequenceNode_t;
-
-typedef struct btDecoratorNode_s
-{
-	btNodeType_t nodeType;
-
-	btNodeState_t(*execute)(void);
-
-	btNode_t *child;
-} btDecoratorNode_t;
-
-typedef struct btLeafNode_s
-{
-	btNodeType_t nodeType;
-
-	btNodeState_t(*execute)(void);
-} btLeafNode_t;
-
-typedef struct behaviorTree_s
-{
-	btNode_t *root;
-	btNode_t *activeNode;
-} behaviorTree_t;
-
-static btNode_t *NPC_BT_CreateSelectorNode(int numChildren, ...)
-{
-	btSelectorNode_t *node;
-	trap->TrueMalloc(&node, sizeof(btSelectorNode_t));
-
-	node->nodeType = BT_NODE_TYPE_SELECTOR;
-	node->numChildren = numChildren;
-	node->activeChildIndex = 0;
-
-	size_t arraySize = sizeof(btNode_t *) * numChildren;
-	trap->TrueMalloc((void **)&node->children, arraySize);
-
-	va_list args;
-	va_start(args, numChildren);
-	for (int i = 0; i < numChildren; ++i)
-	{
-		node->children[i] = va_arg(args, btNode_t *);
-	}
-	va_end(args);
-
-	return (btNode_t *)node;
-}
-
-static btNode_t *NPC_BT_CreateSequenceNode(int numChildren, ...)
-{
-	btSequenceNode_t *node;
-	trap->TrueMalloc(&node, sizeof(btSequenceNode_t));
-
-	node->nodeType = BT_NODE_TYPE_SEQUENCE;
-	node->numChildren = numChildren;
-	node->activeChildIndex = 0;
-
-	size_t arraySize = sizeof(btNode_t *) * numChildren;
-	trap->TrueMalloc((void **)&node->children, arraySize);
-
-	va_list args;
-	va_start(args, numChildren);
-	for (int i = 0; i < numChildren; ++i)
-	{
-		node->children[i] = va_arg(args, btNode_t *);
-	}
-	va_end(args);
-
-	return (btNode_t *)node;
-}
-
-static btNode_t *NPC_BT_CreateDecoratorNode(btNodeState_t(*fn)(void), btNode_t *child)
-{
-	btDecoratorNode_t *node;
-	trap->TrueMalloc(&node, sizeof(btDecoratorNode_t));
-
-	node->nodeType = BT_NODE_TYPE_DECORATOR;
-	node->execute = fn;
-	node->child = child;
-
-	return (btNode_t *)node;
-}
-
-static btNode_t *NPC_BT_CreateLeafNode(btNodeState_t(*fn)(void))
-{
-	btLeafNode_t *node;
-	trap->TrueMalloc(&node, sizeof(btLeafNode_t));
-
-	node->nodeType = BT_NODE_TYPE_LEAF;
-	node->execute = fn;
-
-	return (btNode_t *)node;
-}
-
-static void NPC_BT_FreeNode(btNode_t *btNode)
-{
-	switch (btNode->nodeType)
-	{
-	case BT_NODE_TYPE_SELECTOR:
-	{
-		btSelectorNode_t *btSelectorNode = (btSelectorNode_t *)btNode;
-		for (int i = 0; i < btSelectorNode->numChildren; ++i)
-		{
-			NPC_BT_FreeNode(btSelectorNode->children[i]);
-		}
-		trap->TrueFree((void **)&btSelectorNode->children);
-		break;
-	}
-
-	case BT_NODE_TYPE_SEQUENCE:
-	{
-		btSequenceNode_t *btSequenceNode = (btSequenceNode_t *)btNode;
-		for (int i = 0; i < btSequenceNode->numChildren; ++i)
-		{
-			NPC_BT_FreeNode(btSequenceNode->children[i]);
-		}
-		trap->TrueFree((void **)&btSequenceNode->children);
-		break;
-	}
-
-	case BT_NODE_TYPE_DECORATOR:
-	{
-		btDecoratorNode_t *btDecoratorNode = (btDecoratorNode_t *)btNode;
-		NPC_BT_FreeNode(btDecoratorNode->child);
-		break;
-	}
-
-	default:
-		break;
-	}
-
-	trap->TrueFree(&btNode);
-}
-
-static behaviorTree_t behaviorTree;
-//=======================================================================
 
 void CorpsePhysics( gentity_t *self )
 {
@@ -1491,135 +1320,6 @@ void NPC_RunBehavior( int team, int bState )
 	}
 }
 
-static void NPC_ResetBehaviorTreeNode(btNode_t *btNode)
-{
-	switch (btNode->nodeType)
-	{
-	case BT_NODE_TYPE_SELECTOR:
-	{
-		btSelectorNode_t *btSelectorNode = (btSelectorNode_t *)btNode;
-		btSelectorNode->activeChildIndex = 0;
-
-		for (int i = 0; i < btSelectorNode->numChildren; ++i)
-		{
-			NPC_ResetBehaviorTreeNode(btSelectorNode->children[i]);
-		}
-		break;
-	}
-
-	case BT_NODE_TYPE_SEQUENCE:
-	{
-		btSequenceNode_t *btSequenceNode = (btSequenceNode_t *)btNode;
-		btSequenceNode->activeChildIndex = 0;
-
-		for (int i = 0; i < btSequenceNode->numChildren; ++i)
-		{
-			NPC_ResetBehaviorTreeNode(btSequenceNode->children[i]);
-		}
-		break;
-	}
-
-	default:
-		break;
-	}
-}
-
-static void NPC_ResetBehaviorTree(behaviorTree_t *behaviorTree)
-{
-	NPC_ResetBehaviorTreeNode(behaviorTree->root);
-}
-
-static btNodeState_t NPC_RunBehaviorTreeNode(behaviorTree_t *behaviorTree, btNode_t *btNode)
-{
-	switch (btNode->nodeType)
-	{
-	case BT_NODE_TYPE_SELECTOR:
-	{
-		btSelectorNode_t *btSelectorNode = (btSelectorNode_t *)btNode;
-		
-		while (1)
-		{
-			btNode_t *activeNode = btSelectorNode->children[btSelectorNode->activeChildIndex];
-			btNodeState_t nodeState = NPC_RunBehaviorTreeNode(behaviorTree, activeNode);
-
-			if (nodeState != BT_NODE_STATE_FAILED)
-			{
-				return nodeState;
-			}
-
-			if (++btSelectorNode->activeChildIndex == btSelectorNode->numChildren)
-			{
-				return BT_NODE_STATE_FAILED;
-			}
-		}
-	}
-
-	case BT_NODE_TYPE_SEQUENCE:
-	{
-		btSequenceNode_t *btSequenceNode = (btSequenceNode_t *)btNode;
-
-		while (1)
-		{
-			btNode_t *activeNode = btSequenceNode->children[btSequenceNode->activeChildIndex];
-			btNodeState_t nodeState = NPC_RunBehaviorTreeNode(behaviorTree, activeNode);
-
-			if (nodeState != BT_NODE_STATE_SUCCEEDED)
-			{
-				return nodeState;
-			}
-
-			if (++btSequenceNode->activeChildIndex == btSequenceNode->numChildren)
-			{
-				return BT_NODE_STATE_SUCCEEDED;
-			}
-		}
-	}
-
-	case BT_NODE_TYPE_DECORATOR:
-	{
-		btDecoratorNode_t *btDecoratorNode = (btDecoratorNode_t *)btNode;
-		return btDecoratorNode->execute();
-	}
-
-	case BT_NODE_TYPE_LEAF:
-	{
-		btLeafNode_t *btLeafNode = (btLeafNode_t *)btNode;
-		return btLeafNode->execute();
-	}
-
-	default:
-		assert(!"Invalid node type");
-		return BT_NODE_STATE_SUCCEEDED;;
-	}
-}
-
-void NPC_RunBehaviorTree(behaviorTree_t *bt)
-{
-	btNodeState_t state = NPC_RunBehaviorTreeNode(bt, bt->root); 
-	if (state != BT_NODE_STATE_RUNNING)
-	{
-		NPC_ResetBehaviorTree(bt);
-	}
-}
-
-btNodeState_t NPC_BT_FoundEnemy(void)
-{
-	int NPC_FindNearestEnemy(gentity_t* ent);
-	const int enemyEntityId = NPC_FindNearestEnemy(NPCS.NPC);
-	if (enemyEntityId == -1)
-	{
-		return BT_NODE_STATE_FAILED;
-	}
-
-	return BT_NODE_STATE_SUCCEEDED;
-}
-
-btNodeState_t NPC_BT_FireWeapon(void)
-{
-	NPCS.ucmd.buttons |= BUTTON_ATTACK;
-	return BT_NODE_STATE_SUCCEEDED;
-}
-
 /*
 ===============
 NPC_ExecuteBState
@@ -1632,116 +1332,120 @@ NPC Behavior state thinking
 */
 void NPC_ExecuteBState ( gentity_t *self)//, int msec )
 {
-#if 0
-	bState_t	bState;
-
-	NPC_HandleAIFlags();
-
-	//FIXME: these next three bits could be a function call, some sort of setup/cleanup func
-	//Lookmode must be reset every think cycle
-	if(NPCS.NPC->delayScriptTime && NPCS.NPC->delayScriptTime <= level.time)
+	if (!g_newAI.integer)
 	{
-		G_ActivateBehavior( NPCS.NPC, BSET_DELAYED);
-		NPCS.NPC->delayScriptTime = 0;
-	}
+		bState_t	bState;
 
-	//Clear this and let bState set it itself, so it automatically handles changing bStates... but we need a set bState wrapper func
-	NPCS.NPCInfo->combatMove = qfalse;
+		NPC_HandleAIFlags();
 
-	//Execute our bState
-	if(NPCS.NPCInfo->tempBehavior)
-	{//Overrides normal behavior until cleared
-		bState = NPCS.NPCInfo->tempBehavior;
+		//FIXME: these next three bits could be a function call, some sort of setup/cleanup func
+		//Lookmode must be reset every think cycle
+		if (NPCS.NPC->delayScriptTime && NPCS.NPC->delayScriptTime <= level.time)
+		{
+			G_ActivateBehavior(NPCS.NPC, BSET_DELAYED);
+			NPCS.NPC->delayScriptTime = 0;
+		}
+
+		//Clear this and let bState set it itself, so it automatically handles changing bStates... but we need a set bState wrapper func
+		NPCS.NPCInfo->combatMove = qfalse;
+
+		//Execute our bState
+		if (NPCS.NPCInfo->tempBehavior)
+		{//Overrides normal behavior until cleared
+			bState = NPCS.NPCInfo->tempBehavior;
+		}
+		else
+		{
+			if (!NPCS.NPCInfo->behaviorState)
+				NPCS.NPCInfo->behaviorState = NPCS.NPCInfo->defaultBehavior;
+
+			bState = NPCS.NPCInfo->behaviorState;
+		}
+
+		//Pick the proper bstate for us and run it
+		NPC_RunBehavior(self->client->playerTeam, bState);
+
+		if (NPCS.NPC->enemy)
+		{
+			if (!NPCS.NPC->enemy->inuse)
+			{
+				// just in case bState doesn't catch this
+				G_ClearEnemy(NPCS.NPC);
+			}
+		}
+
+		if (NPCS.NPC->client->ps.saberLockTime && NPCS.NPC->client->ps.saberLockEnemy != ENTITYNUM_NONE)
+		{
+			NPC_SetLookTarget(NPCS.NPC, NPCS.NPC->client->ps.saberLockEnemy, level.time + 1000);
+		}
+		else if (!NPC_CheckLookTarget(NPCS.NPC))
+		{
+			if (NPCS.NPC->enemy)
+			{
+				NPC_SetLookTarget(NPCS.NPC, NPCS.NPC->enemy->s.number, 0);
+			}
+		}
+
+		if (NPCS.NPC->enemy)
+		{
+			if (NPCS.NPC->enemy->flags & FL_DONT_SHOOT)
+			{
+				NPCS.ucmd.buttons &= ~BUTTON_ATTACK;
+				NPCS.ucmd.buttons &= ~BUTTON_ALT_ATTACK;
+			}
+			else if (NPCS.NPC->client->playerTeam != NPCTEAM_ENEMY && NPCS.NPC->enemy->NPC && (NPCS.NPC->enemy->NPC->surrenderTime > level.time || (NPCS.NPC->enemy->NPC->scriptFlags & SCF_FORCED_MARCH)))
+			{
+				//don't shoot someone who's surrendering if you're a good guy
+				NPCS.ucmd.buttons &= ~BUTTON_ATTACK;
+				NPCS.ucmd.buttons &= ~BUTTON_ALT_ATTACK;
+			}
+
+			if (NPCS.client->ps.weaponstate == WEAPON_IDLE)
+			{
+				NPCS.client->ps.weaponstate = WEAPON_READY;
+			}
+		}
+		else
+		{
+			if (NPCS.client->ps.weaponstate == WEAPON_READY)
+			{
+				NPCS.client->ps.weaponstate = WEAPON_IDLE;
+			}
+		}
+
+		if (!(NPCS.ucmd.buttons & BUTTON_ATTACK) && NPCS.NPC->attackDebounceTime > level.time)
+		{
+			//We just shot but aren't still shooting, so hold the gun up for a while
+			if (NPCS.client->ps.weapon == WP_SABER)
+			{
+				//One-handed
+				NPC_SetAnim(NPCS.NPC, SETANIM_TORSO, TORSO_WEAPONREADY1, SETANIM_FLAG_NORMAL);
+			}
+			else if (NPCS.client->ps.weapon == WP_BRYAR_PISTOL)
+			{
+				//Sniper pose
+				NPC_SetAnim(NPCS.NPC, SETANIM_TORSO, TORSO_WEAPONREADY3, SETANIM_FLAG_NORMAL);
+			}
+		}
+		else if (!NPCS.NPC->enemy)//HACK!
+		{
+			if (NPCS.NPC->s.torsoAnim == TORSO_WEAPONREADY1 || NPCS.NPC->s.torsoAnim == TORSO_WEAPONREADY3)
+			{
+				//we look ready for action, using one of the first 2 weapon, let's rest our weapon on our shoulder
+				NPC_SetAnim(NPCS.NPC, SETANIM_TORSO, TORSO_WEAPONIDLE3, SETANIM_FLAG_NORMAL);
+			}
+		}
+
+		NPC_CheckAttackHold();
+		NPC_ApplyScriptFlags();
+
+		// run the bot through the server like it was a real client
+		//=== Save the ucmd for the second no-think Pmove ============================
 	}
 	else
 	{
-		if(!NPCS.NPCInfo->behaviorState)
-			NPCS.NPCInfo->behaviorState = NPCS.NPCInfo->defaultBehavior;
-
-		bState = NPCS.NPCInfo->behaviorState;
+		NPC_RunBehaviorTree(NPCS.NPCInfo->behaviorTree);
 	}
-
-	//Pick the proper bstate for us and run it
-	NPC_RunBehavior( self->client->playerTeam, bState );
-
-	if ( NPCS.NPC->enemy )
-	{
-		if ( !NPCS.NPC->enemy->inuse )
-		{
-			// just in case bState doesn't catch this
-			G_ClearEnemy( NPCS.NPC );
-		}
-	}
-
-	if ( NPCS.NPC->client->ps.saberLockTime && NPCS.NPC->client->ps.saberLockEnemy != ENTITYNUM_NONE )
-	{
-		NPC_SetLookTarget( NPCS.NPC, NPCS.NPC->client->ps.saberLockEnemy, level.time+1000 );
-	}
-	else if ( !NPC_CheckLookTarget( NPCS.NPC ) )
-	{
-		if ( NPCS.NPC->enemy )
-		{
-			NPC_SetLookTarget( NPCS.NPC, NPCS.NPC->enemy->s.number, 0 );
-		}
-	}
-
-	if ( NPCS.NPC->enemy )
-	{
-		if(NPCS.NPC->enemy->flags & FL_DONT_SHOOT)
-		{
-			NPCS.ucmd.buttons &= ~BUTTON_ATTACK;
-			NPCS.ucmd.buttons &= ~BUTTON_ALT_ATTACK;
-		}
-		else if ( NPCS.NPC->client->playerTeam != NPCTEAM_ENEMY && NPCS.NPC->enemy->NPC && (NPCS.NPC->enemy->NPC->surrenderTime > level.time || (NPCS.NPC->enemy->NPC->scriptFlags&SCF_FORCED_MARCH)) )
-		{
-			//don't shoot someone who's surrendering if you're a good guy
-			NPCS.ucmd.buttons &= ~BUTTON_ATTACK;
-			NPCS.ucmd.buttons &= ~BUTTON_ALT_ATTACK;
-		}
-
-		if(NPCS.client->ps.weaponstate == WEAPON_IDLE)
-		{
-			NPCS.client->ps.weaponstate = WEAPON_READY;
-		}
-	}
-	else
-	{
-		if(NPCS.client->ps.weaponstate == WEAPON_READY)
-		{
-			NPCS.client->ps.weaponstate = WEAPON_IDLE;
-		}
-	}
-
-	if(!(NPCS.ucmd.buttons & BUTTON_ATTACK) && NPCS.NPC->attackDebounceTime > level.time)
-	{
-		//We just shot but aren't still shooting, so hold the gun up for a while
-		if(NPCS.client->ps.weapon == WP_SABER )
-		{
-			//One-handed
-			NPC_SetAnim(NPCS.NPC,SETANIM_TORSO,TORSO_WEAPONREADY1,SETANIM_FLAG_NORMAL);
-		}
-		else if(NPCS.client->ps.weapon == WP_BRYAR_PISTOL)
-		{
-			//Sniper pose
-			NPC_SetAnim(NPCS.NPC,SETANIM_TORSO,TORSO_WEAPONREADY3,SETANIM_FLAG_NORMAL);
-		}
-	}
-	else if ( !NPCS.NPC->enemy )//HACK!
-	{
-        if( NPCS.NPC->s.torsoAnim == TORSO_WEAPONREADY1 || NPCS.NPC->s.torsoAnim == TORSO_WEAPONREADY3 )
-        {
-			//we look ready for action, using one of the first 2 weapon, let's rest our weapon on our shoulder
-            NPC_SetAnim(NPCS.NPC,SETANIM_TORSO,TORSO_WEAPONIDLE3,SETANIM_FLAG_NORMAL);
-        }
-	}
-
-	NPC_CheckAttackHold();
-	NPC_ApplyScriptFlags();
-
-	// run the bot through the server like it was a real client
-	//=== Save the ucmd for the second no-think Pmove ============================
-#endif
-	NPC_RunBehaviorTree(&behaviorTree);
 
 	NPCS.ucmd.serverTime = level.time - 50;
 	memcpy( &NPCS.NPCInfo->last_ucmd, &NPCS.ucmd, sizeof( usercmd_t ) );
@@ -1751,10 +1455,11 @@ void NPC_ExecuteBState ( gentity_t *self)//, int msec )
 		NPCS.NPCInfo->last_ucmd.buttons &= ~(BUTTON_ATTACK | BUTTON_ALT_ATTACK);
 	}
 
-#if 0
-	NPC_CheckAttackScript();
-	NPC_KeepCurrentFacing();
-#endif
+	if (!g_newAI.integer)
+	{
+		NPC_CheckAttackScript();
+		NPC_KeepCurrentFacing();
+	}
 
 	if ( !NPCS.NPC->next_roff_time || NPCS.NPC->next_roff_time < level.time )
 	{
@@ -1976,11 +1681,6 @@ void NPC_InitGame( void )
 {
 	NPC_LoadParms();
 
-	btNode_t *findEnemyNode = NPC_BT_CreateLeafNode(NPC_BT_FoundEnemy);
-	btNode_t *fireNode = NPC_BT_CreateLeafNode(NPC_BT_FireWeapon);
-
-	behaviorTree.activeNode = NULL;
-	behaviorTree.root = NPC_BT_CreateSequenceNode(2, findEnemyNode, fireNode);
 }
 
 void NPC_SetAnim(gentity_t *ent, int setAnimParts, int anim, int setAnimFlags)

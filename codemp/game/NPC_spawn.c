@@ -28,6 +28,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "bg_saga.h"
 #include "bg_vehicles.h"
 #include "g_nav.h"
+#include "npc_behaviortree.h"
 
 extern void G_DebugPrint( int level, const char *format, ... );
 
@@ -1286,6 +1287,8 @@ gNPC_t *New_NPC_t(int entNum)
 		//
 		memset(ptr, 0, sizeof( *ptr ) );
 	}
+
+	ptr->behaviorTree = NPC_CreateBehaviorTree(entNum);
 
 	return ptr;
 }

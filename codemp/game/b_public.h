@@ -280,6 +280,8 @@ typedef struct
 	int			ffireCount;		//sigh... you'd think I'd be able to find a way to do this without having to use 3 int fields, but...
 	int			ffireDebounce;
 	int			ffireFadeDebounce;
+
+	struct behaviorTree_s *behaviorTree;
 } gNPC_t;
 
 void G_SquadPathsInit(void);

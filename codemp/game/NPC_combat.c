@@ -2507,6 +2507,22 @@ void SP_point_combat( gentity_t *self )
 	G_FreeEntity(self);
 }
 
+void CP_Add(const vec3_t origin, int flags)
+{
+	if (level.numCombatPoints == MAX_COMBAT_POINTS)
+	{
+		Com_Printf(S_COLOR_RED "MAX_COMBAT_POINTS reached\n");
+		return;
+	}
+
+	combatPoint_t *p = level.combatPoints + level.numCombatPoints++;
+	Com_Memset(p, 0, sizeof(*p));
+
+	VectorCopy(origin, p->origin);
+	p->flags = flags;
+	p->waypoint = NAV_FindClosestWaypointForPoint2(p->origin);
+}
+
 void CP_FindCombatPointWaypoints( void )
 {
 	int i;
