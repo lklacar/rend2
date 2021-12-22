@@ -282,6 +282,7 @@ typedef struct
 	int			ffireFadeDebounce;
 
 	struct behaviorTree_s *behaviorTree;
+	int			targetWaypoint;
 } gNPC_t;
 
 void G_SquadPathsInit(void);

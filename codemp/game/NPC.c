@@ -1444,7 +1444,12 @@ void NPC_ExecuteBState ( gentity_t *self)//, int msec )
 	}
 	else
 	{
-		NPC_RunBehaviorTree(NPCS.NPCInfo->behaviorTree);
+		if (NPCS.NPCInfo->behaviorTree != NULL)
+		{
+			NPC_RunBehaviorTree(NPCS.NPCInfo->behaviorTree);
+		}
+
+		NPC_UpdateAngles(qtrue, qtrue);
 	}
 
 	NPCS.ucmd.serverTime = level.time - 50;

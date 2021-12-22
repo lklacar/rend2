@@ -24,6 +24,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "b_local.h"
 #include "anims.h"
 #include "w_saber.h"
+#include "g_local.h"
 
 extern qboolean G_CheckForStrongAttackMomentum( gentity_t *self );
 extern void G_AddVoiceEvent( gentity_t *self, int event, int speakDebounceTime );
@@ -377,6 +378,11 @@ NPC_Pain
 */
 void NPC_Pain(gentity_t *self, gentity_t *attacker, int damage)
 {
+	if (g_newAI.integer)
+	{
+		return;
+	}
+
 	npcteam_t otherTeam = NPCTEAM_FREE;
 	int		voiceEvent = -1;
 	gentity_t *other = attacker;
@@ -551,6 +557,10 @@ NPC_Touch
 extern qboolean INV_SecurityKeyGive( gentity_t *target, const char *keyname );
 void NPC_Touch(gentity_t *self, gentity_t *other, trace_t *trace)
 {
+	if (g_newAI.integer)
+	{
+		return;
+	}
 
 	if(!self->NPC)
 		return;
@@ -1025,6 +1035,11 @@ extern void Add_Batteries( gentity_t *ent, int *count );
 
 void NPC_Use( gentity_t *self, gentity_t *other, gentity_t *activator )
 {
+	if (g_newAI.integer)
+	{
+		return;
+	}
+
 	if (self->client->ps.pm_type == PM_DEAD)
 	{//or just remove ->pain in player_die?
 		return;

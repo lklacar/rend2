@@ -1288,8 +1288,6 @@ gNPC_t *New_NPC_t(int entNum)
 		memset(ptr, 0, sizeof( *ptr ) );
 	}
 
-	ptr->behaviorTree = NPC_CreateBehaviorTree(entNum);
-
 	return ptr;
 }
 
@@ -1435,6 +1433,8 @@ gentity_t *NPC_Spawn_Do( gentity_t *ent )
 	newent->NPC->tempGoal->classname = "NPC_goal";
 	newent->NPC->tempGoal->parent = newent;
 	newent->NPC->tempGoal->r.svFlags |= SVF_NOCLIENT;
+
+	newent->NPC->behaviorTree = NPC_CreateBehaviorTree(newent->s.number);
 
 	if ( newent->client == NULL )
 	{
