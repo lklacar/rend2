@@ -6,6 +6,7 @@
 
 typedef enum btNodeType_e
 {
+	BT_NODE_TYPE_ACTIVE_SELECTOR,
 	BT_NODE_TYPE_SELECTOR,
 	BT_NODE_TYPE_SEQUENCE,
 	BT_NODE_TYPE_DECORATOR,
@@ -74,6 +75,30 @@ typedef struct behaviorTree_s
 } behaviorTree_t;
 
 static behaviorTree_t s_behaviorTrees[MAX_GENTITIES];
+
+btNode_t *NPC_BT_CreateActiveSelectorNode(int numChildren, ...)
+{
+	btSelectorNode_t *node;
+	trap->TrueMalloc(&node, sizeof(btSelectorNode_t));
+
+	node->type = BT_NODE_TYPE_ACTIVE_SELECTOR;
+	node->state = BT_NODE_STATE_INVALID;
+	node->numChildren = numChildren;
+	node->activeChildIndex = 0;
+
+	size_t arraySize = sizeof(btNode_t *) * numChildren;
+	trap->TrueMalloc((void **)&node->children, arraySize);
+
+	va_list args;
+	va_start(args, numChildren);
+	for (int i = 0; i < numChildren; ++i)
+	{
+		node->children[i] = va_arg(args, btNode_t *);
+	}
+	va_end(args);
+
+	return (btNode_t *)node;
+}
 
 btNode_t *NPC_BT_CreateSelectorNode(int numChildren, ...)
 {
@@ -152,6 +177,7 @@ static void NPC_BT_FreeNode(btNode_t *btNode)
 {
 	switch (btNode->type)
 	{
+	case BT_NODE_TYPE_ACTIVE_SELECTOR:
 	case BT_NODE_TYPE_SELECTOR:
 	{
 		btSelectorNode_t *btSelectorNode = (btSelectorNode_t *)btNode;
@@ -192,6 +218,49 @@ btNodeState_t NPC_RunBehaviorTreeNode(behaviorTree_t *behaviorTree, btNode_t *bt
 {
 	switch (btNode->type)
 	{
+	case BT_NODE_TYPE_ACTIVE_SELECTOR:
+	{
+		btSelectorNode_t *btSelectorNode = (btSelectorNode_t *)btNode;
+		if (btSelectorNode->state != BT_NODE_STATE_RUNNING)
+		{
+			btSelectorNode->state = BT_NODE_STATE_RUNNING;
+			btSelectorNode->activeChildIndex = 0;
+		}
+
+		int newActiveChildIndex = 0;
+		btNodeState_t newState = BT_NODE_STATE_INVALID;
+
+		for (;;)
+		{
+			btNode_t *activeNode = btSelectorNode->children[newActiveChildIndex];
+			btNodeState_t nodeState = NPC_RunBehaviorTreeNode(behaviorTree, activeNode);
+
+			if (nodeState != BT_NODE_STATE_FAILED)
+			{
+				newState = nodeState;
+				break;
+			}
+
+			if (++newActiveChildIndex == btSelectorNode->numChildren)
+			{
+				newState = BT_NODE_STATE_FAILED;
+				break;
+			}
+		}
+
+		if (newActiveChildIndex != btSelectorNode->activeChildIndex &&
+			newActiveChildIndex != btSelectorNode->numChildren)
+		{
+			btNode_t *lastActiveNode = btSelectorNode->children[btSelectorNode->activeChildIndex];
+			lastActiveNode->state = BT_NODE_STATE_INVALID;
+
+			btSelectorNode->activeChildIndex = newActiveChildIndex;
+			btSelectorNode->state = newState;
+		}
+
+		return btSelectorNode->state;
+	}
+
 	case BT_NODE_TYPE_SELECTOR:
 	{
 		btSelectorNode_t *btSelectorNode = (btSelectorNode_t *)btNode;
@@ -533,15 +602,15 @@ behaviorTree_t *NPC_CreateBehaviorTree(int entityNum)
 			NPC_BT_CreateLeafNode(NPC_BT_MoveToLastEnemyLocation));
 
 	// Patrolling
-	btNode_t *patrolNode = NPC_BT_CreateSequenceNode(
-		3,
-		NPC_BT_CreateLeafNode(NPC_BT_GetRandomPatrolLocation),
-		NPC_BT_CreateLeafNode(NPC_BT_MoveToPatrolLocation),
-		NPC_BT_CreateLeafNode(NPC_BT_Wait));
 	btNode_t *patrolNodeWhileNoEnemy = NPC_BT_CreateDecoratorNode(
-		NPC_BT_HasNoEnemy, patrolNode);
+		NPC_BT_HasNoEnemy,
+		NPC_BT_CreateSequenceNode(
+			3,
+			NPC_BT_CreateLeafNode(NPC_BT_GetRandomPatrolLocation),
+			NPC_BT_CreateLeafNode(NPC_BT_MoveToPatrolLocation),
+			NPC_BT_CreateLeafNode(NPC_BT_Wait)));
 
-	btNode_t *rootNode = NPC_BT_CreateSelectorNode(
+	btNode_t *rootNode = NPC_BT_CreateActiveSelectorNode(
 		3,
 		attackNode,
 		recentChaseNode,
