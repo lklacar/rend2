@@ -148,6 +148,7 @@ typedef struct
 	gentity_t	*aimingBeam;		// debugging aid
 
 	vec3_t		enemyLastSeenLocation;
+	vec3_t		enemyLastSeenVelocity;
 	int			enemyLastSeenTime;
 	vec3_t		enemyLastHeardLocation;
 	int			enemyLastHeardTime;

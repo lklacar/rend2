@@ -362,6 +362,7 @@ struct gentity_s {
 	gentity_t	*activator;
 	gentity_t	*teamchain;		// next entity in team
 	gentity_t	*teammaster;	// master of the team
+	int			lastEnemyCheckFrame;
 
 	int			watertype;
 	int			waterlevel;

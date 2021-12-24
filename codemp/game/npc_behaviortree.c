@@ -49,6 +49,15 @@ typedef struct btDecoratorNode_s
 	int value;
 } btDecoratorNode_t;
 
+typedef struct btParallelNode_s
+{
+	btNodeType_t type;
+	btNodeState_t state;
+
+	int numChildren;
+	btNode_t **children;
+} btParallelNode_t;
+
 typedef struct btLeafNode_s
 {
 	btNodeType_t type;
@@ -256,7 +265,7 @@ btNodeState_t NPC_RunBehaviorTreeNode(behaviorTree_t *behaviorTree, btNode_t *bt
 		btLeafNode_t *btLeafNode = (btLeafNode_t *)btNode;
 		if (btLeafNode->state != BT_NODE_STATE_RUNNING)
 		{
-			btLeafNode->value = level.time;
+			btLeafNode->value = level.time + Q_irand(3000, 6000);
 		}
 
 		btLeafNode->state = btLeafNode->execute(behaviorTree, btNode);
@@ -347,10 +356,52 @@ static btNodeState_t NPC_BT_FaceEnemy(behaviorTree_t *bt, btNode_t *node)
 	return node->state;
 }
 
+static gentity_t *NPC_UpdateEnemy(gentity_t *npc)
+{
+	int NPC_FindNearestEnemy(gentity_t* ent);
+
+	if (level.framenum != npc->lastEnemyCheckFrame)
+	{
+		const int enemyEntityNum = NPC_FindNearestEnemy(npc);
+		if (enemyEntityNum == -1)
+		{
+			npc->enemy = NULL;
+		}
+		else
+		{
+			gNPC_t *npcInfo = npc->NPC;
+
+			npc->enemy = g_entities + enemyEntityNum;
+			npcInfo->enemyLastSeenTime = level.time;
+			VectorCopy(npc->enemy->r.currentOrigin, npcInfo->enemyLastSeenLocation);
+		}
+
+		npc->lastEnemyCheckFrame = level.framenum;
+	}
+
+	return npc->enemy;
+}
+
 static btNodeState_t NPC_BT_HasEnemy(behaviorTree_t *bt, btNode_t *node)
 {
 	gentity_t *npc = NPCS.NPC;
-	if (npc->enemy != NULL && NPC_ValidEnemy(npc->enemy) && G_ClearLOS4(npc, npc->enemy))
+	if (NPC_UpdateEnemy(npc) != NULL)
+	{
+		btDecoratorNode_t *decoratorNode = (btDecoratorNode_t *)node;
+		node->state = NPC_RunBehaviorTreeNode(bt, decoratorNode->child);
+	}
+	else
+	{
+		node->state = BT_NODE_STATE_FAILED;
+	}
+
+	return node->state;
+}
+
+static btNodeState_t NPC_BT_HasNoEnemy(behaviorTree_t *bt, btNode_t *node)
+{
+	gentity_t *npc = NPCS.NPC;
+	if (NPC_UpdateEnemy(npc) == NULL)
 	{
 		btDecoratorNode_t *decoratorNode = (btDecoratorNode_t *)node;
 		node->state = NPC_RunBehaviorTreeNode(bt, decoratorNode->child);
@@ -367,28 +418,28 @@ static btNodeState_t NPC_BT_GetRandomPatrolLocation(behaviorTree_t *bt, btNode_t
 {
 	gentity_t *npc = NPCS.NPC;
 
-	const int patrolWaypoint = NAV_GetNearestNode(npc, WAYPOINT_NONE);
-	if (patrolWaypoint != WAYPOINT_NONE)
+	const int patrolWaypoint = NPC_FindCombatPoint(
+		npc->r.currentOrigin,
+		npc->r.currentOrigin,
+		npc->r.currentOrigin,
+		CP_INVESTIGATE | CP_HAS_ROUTE,
+		0.0f,
+		npc->combatPoint);
+	if (patrolWaypoint != -1)
 	{
-		const int numEdges = trap->Nav_GetNodeNumEdges(patrolWaypoint);
-		if (numEdges > 0)
-		{
-			const int edgeWaypoint = trap->Nav_GetNodeEdge(patrolWaypoint, Q_irand(0, numEdges - 1));
+		combatPoint_t *combatPoint = level.combatPoints + patrolWaypoint;
+		const int radius = 48;
+		vec3_t nodePosition;
 
-			vec3_t nodePosition;
-			if (trap->Nav_GetNodePosition(edgeWaypoint, nodePosition))
-			{
-				const int radius = trap->Nav_GetNodeRadius(edgeWaypoint);
+		VectorCopy(combatPoint->origin, nodePosition);
 
-				NPC_SetMoveGoal(NPCS.NPC, nodePosition, radius, qtrue, WAYPOINT_NONE, NULL);
-				NPCS.NPC->waypoint = edgeWaypoint;
+		NPC_SetMoveGoal(npc, nodePosition, radius, qtrue, WAYPOINT_NONE, NULL);
+		npc->combatPoint = patrolWaypoint;
 
-				return node->state = BT_NODE_STATE_SUCCEEDED;
-			}
-		}
+		return node->state = BT_NODE_STATE_SUCCEEDED;
 	}
 
-	NPCS.NPC->waypoint = WAYPOINT_NONE;
+	NPCS.NPC->combatPoint = -1;
 
 	return node->state = BT_NODE_STATE_FAILED;
 }
@@ -398,14 +449,9 @@ static btNodeState_t NPC_BT_MoveToPatrolLocation(behaviorTree_t *bt, btNode_t *n
 	gentity_t *npcEnt = NPCS.NPC;
 	gNPC_t *npc = NPCS.NPCInfo;
 
-	if (NAV_HitNavGoal(npcEnt->r.currentOrigin, npcEnt->r.mins, npcEnt->r.maxs, npc->tempGoal->r.currentOrigin, npc->goalRadius, qfalse))
+	if (UpdateGoal() != NULL)
 	{
-		NPC_ReachedGoal();
-		return node->state = BT_NODE_STATE_SUCCEEDED;
-	}
-	else
-	{
-		if (!NPC_MoveToGoal(qfalse))
+		if (!NPC_MoveToGoal(qtrue))
 		{
 			return node->state = BT_NODE_STATE_FAILED;
 		}
@@ -414,7 +460,57 @@ static btNodeState_t NPC_BT_MoveToPatrolLocation(behaviorTree_t *bt, btNode_t *n
 			return node->state = BT_NODE_STATE_RUNNING;
 		}
 	}
+	else
+	{
+		return node->state = BT_NODE_STATE_SUCCEEDED;
+	}
 }
+
+static btNodeState_t NPC_BT_RecentlySeenEnemy(behaviorTree_t *bt, btNode_t *node)
+{
+	gentity_t *npc = NPCS.NPC;
+	gNPC_t *npcInfo = NPCS.NPCInfo;
+
+	if ((npcInfo->enemyLastSeenTime + 10000) >= level.time)
+	{
+		btDecoratorNode_t *decoratorNode = (btDecoratorNode_t *)node;
+		node->state = NPC_RunBehaviorTreeNode(bt, decoratorNode->child);
+	}
+	else
+	{
+		node->state = BT_NODE_STATE_FAILED;
+	}
+
+	return node->state;
+}
+
+static btNodeState_t NPC_BT_MoveToLastEnemyLocation(behaviorTree_t *bt, btNode_t *node)
+{
+	gentity_t *npc = NPCS.NPC;
+	gNPC_t *npcInfo = NPCS.NPCInfo;
+	if (npcInfo->goalEntity == NULL)
+	{
+		const int radius = 48;
+		NPC_SetMoveGoal(npc, npcInfo->enemyLastSeenLocation, radius, qtrue, WAYPOINT_NONE, NULL);
+	}
+
+	if (UpdateGoal() != NULL)
+	{
+		if (!NPC_MoveToGoal(qtrue))
+		{
+			return node->state = BT_NODE_STATE_FAILED;
+		}
+		else
+		{
+			return node->state = BT_NODE_STATE_RUNNING;
+		}
+	}
+	else
+	{
+		return node->state = BT_NODE_STATE_SUCCEEDED;
+	}
+}
+
 
 behaviorTree_t *NPC_CreateBehaviorTree(int entityNum)
 {
@@ -422,18 +518,34 @@ behaviorTree_t *NPC_CreateBehaviorTree(int entityNum)
 
 	NPC_FreeBehaviorTree(bt);
 
-	btNode_t *faceEnemyNode = NPC_BT_CreateLeafNode(NPC_BT_FaceEnemy);
-	btNode_t *fireNode = NPC_BT_CreateLeafNode(NPC_BT_FireWeapon);
-	btNode_t *attackNode = NPC_BT_CreateSequenceNode(2, faceEnemyNode, fireNode);
-	btNode_t *attackNodeWithDecorator = NPC_BT_CreateDecoratorNode(NPC_BT_HasEnemy, attackNode);
+	// Attacking
+	btNode_t *attackNode = NPC_BT_CreateDecoratorNode(
+		NPC_BT_HasEnemy,
+		NPC_BT_CreateSequenceNode(
+			2,
+			NPC_BT_CreateLeafNode(NPC_BT_FaceEnemy),
+			NPC_BT_CreateLeafNode(NPC_BT_FireWeapon)));
 
-	btNode_t *getPatrolNode = NPC_BT_CreateLeafNode(NPC_BT_GetRandomPatrolLocation);
-	btNode_t *moveToPatrolNode = NPC_BT_CreateLeafNode(NPC_BT_MoveToPatrolLocation);
-	btNode_t *findEnemyNode = NPC_BT_CreateLeafNode(NPC_BT_FindEnemy);
-	btNode_t *searchNode = NPC_BT_CreateDecoratorNode(NPC_BT_KeepTrying, findEnemyNode);
-	btNode_t *patrolNode = NPC_BT_CreateSequenceNode(3, getPatrolNode, moveToPatrolNode, searchNode);
+	// Chasing
+	btNode_t *recentChaseNode =
+		NPC_BT_CreateDecoratorNode(
+			NPC_BT_RecentlySeenEnemy,
+			NPC_BT_CreateLeafNode(NPC_BT_MoveToLastEnemyLocation));
 
-	btNode_t *rootNode = NPC_BT_CreateSelectorNode(2, attackNodeWithDecorator, patrolNode);
+	// Patrolling
+	btNode_t *patrolNode = NPC_BT_CreateSequenceNode(
+		3,
+		NPC_BT_CreateLeafNode(NPC_BT_GetRandomPatrolLocation),
+		NPC_BT_CreateLeafNode(NPC_BT_MoveToPatrolLocation),
+		NPC_BT_CreateLeafNode(NPC_BT_Wait));
+	btNode_t *patrolNodeWhileNoEnemy = NPC_BT_CreateDecoratorNode(
+		NPC_BT_HasNoEnemy, patrolNode);
+
+	btNode_t *rootNode = NPC_BT_CreateSelectorNode(
+		3,
+		attackNode,
+		recentChaseNode,
+		patrolNodeWhileNoEnemy);
 
 	bt->root = rootNode;
 
@@ -451,5 +563,6 @@ void NPC_FreeBehaviorTree(behaviorTree_t *bt)
 
 void NPC_RunBehaviorTree(behaviorTree_t *bt)
 {
+	NPC_UpdateEnemy(NPCS.NPC);
 	NPC_RunBehaviorTreeNode(bt, bt->root); 
 }
