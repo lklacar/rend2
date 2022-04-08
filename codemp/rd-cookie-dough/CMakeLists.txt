@@ -149,7 +149,7 @@ if(WIN32)
 		RUNTIME
 		DESTINATION .
 		COMPONENT ${JKAMPClientComponent})
-else(WIN32)
+else()
 	if(MakeApplicationBundles AND BuildMPEngine)
 		install(TARGETS ${MPCookieDoughRenderer}
 			LIBRARY
@@ -163,11 +163,9 @@ else(WIN32)
 	endif()
 endif()
 
-set_target_properties(${MPCookieDoughRenderer} PROPERTIES COMPILE_DEFINITIONS "${SharedDefines}")
-
-# Hide symbols not explicitly marked public.
-set_property(TARGET ${MPCookieDoughRenderer} APPEND PROPERTY COMPILE_OPTIONS ${OPENJK_VISIBILITY_FLAGS})
-
-set_target_properties(${MPCookieDoughRenderer} PROPERTIES INCLUDE_DIRECTORIES "${MPCookieDoughRendererIncludeDirectories}")
 set_target_properties(${MPCookieDoughRenderer} PROPERTIES PROJECT_LABEL "MP Cookie Dough Renderer")
+# Hide symbols not explicitly marked public.
+target_compile_options(${MPCookieDoughRenderer} PRIVATE ${OPENJK_VISIBILITY_FLAGS})
+target_compile_definitions(${MPCookieDoughRenderer} PRIVATE "${SharedDefines}")
+target_include_directories(${MPCookieDoughRenderer} PRIVATE "${MPCookieDoughRendererIncludeDirectories}")
 target_link_libraries(${MPCookieDoughRenderer} ${MPCookieDoughRendererLibraries})

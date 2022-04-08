@@ -125,18 +125,21 @@ static GLuint GLSL_CreateProgram(const char* vertexShaderCode, const char* fragm
 static void GLSL_MainShader_Init()
 {
 	static constexpr const char VERTEX_SHADER[] = R"(
-struct Light
-{
-	vec4 originAndRadius; // xyz = origin, w = radius
-	vec4 color;
-};
+#if defined(MULTITEXTURE)
+const bool opt_Multitexture = true;
+#else
+const bool opt_Multitexture = false;
+#endif
+#if defined(RENDER_SCENE)
+const bool opt_RenderScene = true;
+#else
+const bool opt_RenderScene = false;
+#endif
 
 layout(std140, binding = 0) uniform View
 {
 	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
-	// Keep lights per-view for now until we need to render multiple scenes
-	Light u_Lights[32];
 };
 
 layout(std430, binding = 0) buffer ModelMatrices
@@ -150,68 +153,50 @@ layout(location = 0) in vec3 in_Position;
 layout(location = 1) in vec3 in_Normal;
 layout(location = 2) in vec4 in_Color;
 layout(location = 3) in vec2 in_TexCoord0;
-#if defined(MULTITEXTURE)
 layout(location = 4) in vec2 in_TexCoord1;
-#endif
 
-#if !defined(RENDER_LIGHT_ONLY)
 layout(location = 0) out vec4 out_Color;
 layout(location = 1) out vec2 out_TexCoord0;
 layout(location = 2) out vec2 out_TexCoord1;
-#else
-layout(location = 0) out vec3 out_PositionWS;
-layout(location = 1) out vec3 out_Normal;
-#endif
 
 #define u_EntityIndex int(u_PushConstants[0])
 
 void main()
 {
 	vec4 position = vec4(in_Position, 1.0);
-#if defined(RENDER_SCENE)
-	position = u_ViewMatrix * u_ModelMatrix[u_EntityIndex] * position;
-#endif
+	if (opt_RenderScene) {
+		position = u_ViewMatrix * u_ModelMatrix[u_EntityIndex] * position;
+	}
 	gl_Position = u_ProjectionMatrix * position;
 
-#if !defined(RENDER_LIGHT_ONLY)
 	out_Color = in_Color;
 	out_TexCoord0 = in_TexCoord0;
-#if defined(MULTITEXTURE)
-	out_TexCoord1 = in_TexCoord1;
-#endif
-#else
-	out_PositionWS = position;
-#endif
+	if (opt_Multitexture) {
+		out_TexCoord1 = in_TexCoord1;
+	}
 }
 )";
 
 	static constexpr const char FRAGMENT_SHADER[] = R"(
-struct Light
-{
-	vec4 originAndRadius; // xyz = origin, w = radius
-	vec4 color;
-};
+#if defined(MULTITEXTURE)
+const bool opt_Multitexture = true;
+#else
+const bool opt_Multitexture = false;
+#endif
 
 layout(std140, binding = 0) uniform View
 {
 	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
-	// Keep lights per-view for now until we need to render multiple scenes
-	Light u_Lights[32];
 };
 
 layout(binding = 0) uniform sampler2D u_Texture0;
 layout(binding = 1) uniform sampler2D u_Texture1;
 layout(location = 0) uniform float u_PushConstants[128];
 
-#if !defined(RENDER_LIGHT_ONLY)
 layout(location = 0) in vec4 in_Color;
 layout(location = 1) in vec2 in_TexCoord0;
 layout(location = 2) in vec2 in_TexCoord1;
-#else
-layout(location = 0) in vec3 in_PositionWS;
-layout(location = 1) in vec3 in_Normal;
-#endif
 
 layout(location = 0) out vec4 out_FragColor;
 
@@ -219,17 +204,15 @@ layout(location = 0) out vec4 out_FragColor;
 #define u_MultiplyTextures (u_PushConstants[1] > 0.0)
 #define u_AlphaTestValue (u_PushConstants[2])
 #define u_AlphaTestFunc (int(u_PushConstants[3]))
-#define u_LightIndices (uint(u_PushConstants[4]))
 
 void main()
 {
-#if !defined(RENDER_LIGHT_ONLY)
 	vec4 color = texture(u_Texture0, in_TexCoord0);
 
-#if defined(MULTITEXTURE)
-	vec4 color1 = texture(u_Texture1, in_TexCoord1);
-	color = mix(color + color1, color * color1, u_MultiplyTextures);
-#endif
+	if (opt_Multitexture) {
+		vec4 color1 = texture(u_Texture1, in_TexCoord1);
+		color = mix(color + color1, color * color1, u_MultiplyTextures);
+	}
 
 	color *= in_Color;
 
@@ -244,29 +227,6 @@ void main()
 		discard;
 	}
 
-#else
-	vec4 color = vec4(0.0);
-	uint lightIndices = u_LightIndices;
-
-	vec3 N = normalize(in_Normal);
-	while (lightIndices != 0)
-	{
-		int lightIndex = findLSB(lightIndices);
-		Light light = u_Lights[lightIndex];
-
-		vec3 modelToLightDiff = light.originAndRadius.xyz - in_PositionWS;
-		vec3 L = normalize(modelToLightDiff);
-		float d = len(modelToLightDiff);
-
-		float NdotL = dot(N, L);
-		if (NdotL > 0.0)
-		{
-			color += light.originAndRadius.w * light.color * NdotL / (d * d);
-		}
-
-		lightIndices &= ~(1u << lightIndex);
-	}
-#endif
 	out_FragColor = color;
 }
 )";
@@ -296,18 +256,10 @@ void main()
 static void GLSL_SkyShader_Init()
 {
 	static constexpr const char VERTEX_SHADER[] = R"(
-struct Light
-{
-	vec4 originAndRadius; // xyz = origin, w = radius
-	vec4 color;
-};
-
 layout(std140, binding = 0) uniform View
 {
 	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
-	// Keep lights per-view for now until we need to render multiple scenes
-	Light u_Lights[32];
 };
 
 layout(std430, binding = 0) buffer ModelMatrices
