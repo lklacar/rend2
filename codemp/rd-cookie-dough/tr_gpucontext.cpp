@@ -83,7 +83,7 @@ static struct RenderContext
 	uint32_t enabledVertexAttribs;
 	VertexBuffers vertexBuffers[8];
 	int shaderProgram;
-	image_t *textures[2];
+	const image_t *textures[2];
 
 	float minDepthRange;
 	float maxDepthRange;
@@ -91,6 +91,8 @@ static struct RenderContext
 	int indexBuffer;
 	ConstantBuffer uniformBuffers[1];
 	StorageBuffer storageBuffers[1];
+
+	float pushConstants[128] = {};
 
 	int drawItemCount;
 	int drawItemCapacity;
@@ -165,9 +167,9 @@ static void RenderContext_Draw(const DrawItem* drawItem)
 			s_context.shaderProgram = shaderProgram;
 		}
 		
+		float pushConstants[5] = {};
 		if (drawItem->isEntity)
 		{
-			float pushConstants[128];
 			pushConstants[0] = (float)drawItem->entityNum;
 			if (layer->modulateTextures) 
 			{
@@ -176,7 +178,13 @@ static void RenderContext_Draw(const DrawItem* drawItem)
 
 			pushConstants[2] = layer->alphaTestValue;
 			pushConstants[3] = (float)layer->alphaTestFunc;
-			qglUniform1fv(0, 4, pushConstants);
+			pushConstants[4] = (float)layer->lightBits;
+
+			if (memcmp(s_context.pushConstants, pushConstants, sizeof(pushConstants)) != 0)
+			{
+				qglUniform1fv(0, 5, pushConstants);
+				Com_Memcpy(s_context.pushConstants, pushConstants, sizeof(pushConstants));
+			}
 		}
 
 		if (layer->constantBuffersUsed)

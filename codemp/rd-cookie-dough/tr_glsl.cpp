@@ -135,11 +135,28 @@ const bool opt_RenderScene = true;
 #else
 const bool opt_RenderScene = false;
 #endif
+#if defined(GEN_TEXCOORDS)
+const bool opt_GenTexCoords = true;
+#else
+const bool opt_GenTexCoords = false;
+#endif
+#if defined(RENDER_LIGHTS_WITH_TEXTURE)
+const bool opt_RenderLightsWithTexture = true;
+#else
+const bool opt_RenderLightsWithTexture = false;
+#endif
+
+struct Light
+{
+	vec4 positionAndRadius;
+	vec4 color;
+};
 
 layout(std140, binding = 0) uniform View
 {
 	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
+	Light u_Lights[32];
 };
 
 layout(std430, binding = 0) buffer ModelMatrices
@@ -158,21 +175,34 @@ layout(location = 4) in vec2 in_TexCoord1;
 layout(location = 0) out vec4 out_Color;
 layout(location = 1) out vec2 out_TexCoord0;
 layout(location = 2) out vec2 out_TexCoord1;
+layout(location = 3) out vec3 out_PositionWS;
 
 #define u_EntityIndex int(u_PushConstants[0])
 
 void main()
 {
 	vec4 position = vec4(in_Position, 1.0);
-	if (opt_RenderScene) {
-		position = u_ViewMatrix * u_ModelMatrix[u_EntityIndex] * position;
+	vec4 positionWS = vec4(0.0);
+	if (opt_RenderScene || opt_RenderLightsWithTexture)
+	{
+		positionWS = u_ModelMatrix[u_EntityIndex] * position;
+		position = u_ViewMatrix * positionWS;
 	}
 	gl_Position = u_ProjectionMatrix * position;
 
-	out_Color = in_Color;
 	out_TexCoord0 = in_TexCoord0;
-	if (opt_Multitexture) {
-		out_TexCoord1 = in_TexCoord1;
+
+	if (opt_RenderLightsWithTexture)
+	{
+		out_PositionWS = positionWS.xyz;
+	}
+	else
+	{
+		out_Color = in_Color;
+		if (opt_Multitexture)
+		{
+			out_TexCoord1 = in_TexCoord1;
+		}
 	}
 }
 )";
@@ -183,11 +213,23 @@ const bool opt_Multitexture = true;
 #else
 const bool opt_Multitexture = false;
 #endif
+#if defined(RENDER_LIGHTS_WITH_TEXTURE)
+const bool opt_RenderLightsWithTexture = true;
+#else
+const bool opt_RenderLightsWithTexture = false;
+#endif
+
+struct Light
+{
+	vec4 positionAndRadius;
+	vec4 color;
+};
 
 layout(std140, binding = 0) uniform View
 {
 	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
+	Light u_Lights[32];
 };
 
 layout(binding = 0) uniform sampler2D u_Texture0;
@@ -197,6 +239,7 @@ layout(location = 0) uniform float u_PushConstants[128];
 layout(location = 0) in vec4 in_Color;
 layout(location = 1) in vec2 in_TexCoord0;
 layout(location = 2) in vec2 in_TexCoord1;
+layout(location = 3) in vec3 in_PositionWS;
 
 layout(location = 0) out vec4 out_FragColor;
 
@@ -204,27 +247,60 @@ layout(location = 0) out vec4 out_FragColor;
 #define u_MultiplyTextures (u_PushConstants[1] > 0.0)
 #define u_AlphaTestValue (u_PushConstants[2])
 #define u_AlphaTestFunc (int(u_PushConstants[3]))
+#define u_LightBits (uint(u_PushConstants[4]))
+
 
 void main()
 {
 	vec4 color = texture(u_Texture0, in_TexCoord0);
 
-	if (opt_Multitexture) {
-		vec4 color1 = texture(u_Texture1, in_TexCoord1);
-		color = mix(color + color1, color * color1, u_MultiplyTextures);
-	}
-
-	color *= in_Color;
-
-	bool alphaTestPasses[4] = {
-		true,
-		color.a < u_AlphaTestValue,
-		color.a > u_AlphaTestValue,
-		color.a >= u_AlphaTestValue,
-	};
-	if (!alphaTestPasses[u_AlphaTestFunc])
+	if (opt_RenderLightsWithTexture)
 	{
-		discard;
+		uint lightBits = u_LightBits;
+		while (lightBits != 0)
+		{
+			uint lightIndex = findLSB(lightBits);
+			Light light = u_Lights[lightIndex];
+
+			// add light
+			vec3 L = light.positionAndRadius.xyz - in_PositionWS;
+			float radius = light.positionAndRadius.w;
+			float distSquared = dot(L, L);
+
+			if (distSquared <= (radius * radius))
+			{
+				float factor = 1.0 - sqrt(distSquared) / radius;
+				factor = factor * factor * factor;
+				color.rgb *= light.color.rgb * factor;
+			}
+			else
+			{
+				color.rgb = vec3(0.0);
+			}
+
+			lightBits &= ~(1 << lightIndex);
+		}
+	}
+	else
+	{
+		if (opt_Multitexture)
+		{
+			vec4 color1 = texture(u_Texture1, in_TexCoord1);
+			color = mix(color + color1, color * color1, u_MultiplyTextures);
+		}
+
+		color *= in_Color;
+
+		bool alphaTestPasses[4] = {
+			true,
+			color.a < u_AlphaTestValue,
+			color.a > u_AlphaTestValue,
+			color.a >= u_AlphaTestValue,
+		};
+		if (!alphaTestPasses[u_AlphaTestFunc])
+		{
+			discard;
+		}
 	}
 
 	out_FragColor = color;
@@ -250,6 +326,12 @@ void main()
 		const char *defines[] = {"RENDER_SCENE", "MULTITEXTURE"};
 		program->permutations[MAIN_SHADER_RENDER_SCENE | MAIN_SHADER_MULTITEXTURE] =
 			GLSL_CreateProgram(VERTEX_SHADER, FRAGMENT_SHADER, defines, 2);
+	}
+
+	{
+		const char *defines[] = {"RENDER_LIGHTS_WITH_TEXTURE"};
+		program->permutations[MAIN_SHADER_RENDER_LIGHTS_WITH_TEXTURE] =
+			GLSL_CreateProgram(VERTEX_SHADER, FRAGMENT_SHADER, defines, 1);
 	}
 }
 

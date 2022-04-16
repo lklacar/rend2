@@ -234,6 +234,15 @@ static void DrawMultitextured( shaderCommands_t *input, DrawItem::Layer* drawIte
 	//}
 }
 
+static bool IsNonLightmapOpaqueTexture(const textureBundle_t *bundle)
+{
+	return bundle->image &&
+		!bundle->isLightmap &&
+		!bundle->numTexMods &&
+		bundle->tcGen != TCGEN_ENVIRONMENT_MAPPED &&
+		bundle->tcGen != TCGEN_FOG;
+}
+
 /*
 ===================
 RB_LightingPass
@@ -247,72 +256,60 @@ static void RB_LightingPass( DrawItem* drawItem, const VertexBuffer* positionsBu
 		return;
 	}
 
-	shaderStage_t* dStage = nullptr;
+	textureBundle_t *textureBundle = nullptr;
 	if (tess.shader)
 	{
 		int i = 0;
-		while (i < tess.shader->numUnfoggedPasses)
+		shaderStage_t *dStage = tess.shader->stages;
+
+		while (i++ < tess.shader->numUnfoggedPasses)
 		{
 			const int blendBits = (GLS_SRCBLEND_BITS+GLS_DSTBLEND_BITS);
-			if (((tess.shader->stages[i].bundle[0].image &&
-				  !tess.shader->stages[i].bundle[0].isLightmap &&
-				  !tess.shader->stages[i].bundle[0].numTexMods &&
-				  tess.shader->stages[i].bundle[0].tcGen != TCGEN_ENVIRONMENT_MAPPED &&
-				  tess.shader->stages[i].bundle[0].tcGen != TCGEN_FOG) ||
-				 (tess.shader->stages[i].bundle[1].image &&
-				  !tess.shader->stages[i].bundle[1].isLightmap &&
-				  !tess.shader->stages[i].bundle[1].numTexMods &&
-				  tess.shader->stages[i].bundle[1].tcGen != TCGEN_ENVIRONMENT_MAPPED &&
-				  tess.shader->stages[i].bundle[1].tcGen != TCGEN_FOG)) &&
-				(tess.shader->stages[i].stateBits & blendBits) == 0)
+			if ((dStage->stateBits & blendBits) != 0)
 			{
-				//only use non-lightmap opaque stages
-				dStage = &tess.shader->stages[i];
+				continue;
+			}
+
+			//only use non-lightmap opaque stages
+			if (IsNonLightmapOpaqueTexture(&dStage->bundle[0]))
+			{
+				textureBundle = &dStage->bundle[0];
 				break;
 			}
-			i++;
+
+			if (IsNonLightmapOpaqueTexture(&dStage->bundle[1]))
+			{
+				textureBundle = &dStage->bundle[1];
+				break;
+			}
+
+			++dStage;
 		}
 	}
 
-	if (dStage != nullptr)
+	if (textureBundle != nullptr)
 	{
-		const image_t *image = nullptr;
-		if (dStage->bundle[0].image &&
-			!dStage->bundle[0].isLightmap &&
-			!dStage->bundle[0].numTexMods &&
-			dStage->bundle[0].tcGen != TCGEN_ENVIRONMENT_MAPPED &&
-			dStage->bundle[0].tcGen != TCGEN_FOG)
-		{
-			image = R_GetAnimatedImage(&dStage->bundle[0]);
-		}
-		else
-		{
-			image = R_GetAnimatedImage(&dStage->bundle[1]);
-		}
-
 		DrawItem::Layer* layer = drawItem->layers + drawItem->layerCount++;
 
 		layer->shaderProgram = GLSL_MainShader_GetHandle();
-		layer->shaderOptions = MAIN_SHADER_RENDER_SCENE;
-		layer->enabledVertexAttributes = 1;
+		layer->shaderOptions = MAIN_SHADER_RENDER_LIGHTS_WITH_TEXTURE;
+		layer->enabledVertexAttributes = 9;  // position = 1, texcoord0 = 8
 		layer->vertexBuffers[0] = *positionsBuffer;
+		layer->vertexBuffers[3] = GpuBuffers_AllocFrameVertexDataMemory(
+			tess.svars.texcoords[0], sizeof(tess.svars.texcoords[0][0]) * tess.numVertexes);
 		layer->storageBuffersUsed = 1;
 		layer->storageBuffers[0] = backEnd.modelsStorageBuffer;
 		layer->constantBuffersUsed = 1;
 		layer->constantBuffers[0] = backEnd.viewConstantsBuffer;
 		layer->stateGroup.stateBits = GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL;
+		layer->textures[0] = R_GetAnimatedImage(textureBundle);
+		layer->lightBits = tess.dlightBits;
 
-		// Is it bad to always draw additive lighting?
 		// Draw the lit mesh
 		// Pass tess.dlightBits and backEnd.refdef.num_dlights - shader can loop over the lights
-		//GL_Bind( tr.dlightImage );
-		//GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL);
-		//R_DrawElements( numIndexes, hitIndexes );
 	}
 	else
 	{
-		//GL_Bind( tr.dlightImage );
-
 		uint64_t blendBits = GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL;
 #if 0
 		if ( dl->additive ) {
@@ -678,9 +675,9 @@ static void ComputeTexCoords( shaderStage_t *pStage ) {
 			memset( tess.svars.texcoords[b], 0, sizeof( float ) * 2 * tess.numVertexes );
 			break;
 		case TCGEN_TEXTURE:
-			for ( i = 0 ; i < tess.numVertexes ; i++ ) {
-				tess.svars.texcoords[b][i][0] = tess.texCoords[i][0][0];
-				tess.svars.texcoords[b][i][1] = tess.texCoords[i][0][1];
+			for ( i = 0 ; i < tess.numVertexes ; i++, texcoords += 2 ) {
+				texcoords[0] = tess.texCoords[i][0][0];
+				texcoords[1] = tess.texCoords[i][0][1];
 			}
 			break;
 		case TCGEN_LIGHTMAP:
@@ -708,9 +705,9 @@ static void ComputeTexCoords( shaderStage_t *pStage ) {
 			}
 			break;
 		case TCGEN_VECTOR:
-			for ( i = 0 ; i < tess.numVertexes ; i++ ) {
-				tess.svars.texcoords[b][i][0] = DotProduct( tess.xyz[i], pStage->bundle[b].tcGenVectors[0] );
-				tess.svars.texcoords[b][i][1] = DotProduct( tess.xyz[i], pStage->bundle[b].tcGenVectors[1] );
+			for ( i = 0 ; i < tess.numVertexes ; i++, texcoords += 2 ) {
+				texcoords[0] = DotProduct( tess.xyz[i], pStage->bundle[b].tcGenVectors[0] );
+				texcoords[1] = DotProduct( tess.xyz[i], pStage->bundle[b].tcGenVectors[1] );
 			}
 			break;
 		case TCGEN_FOG:
@@ -1108,9 +1105,6 @@ void RB_StageIteratorGeneric( void )
 	//
 	RB_IterateStagesGeneric( &drawItem, input, &positionsBuffer );
 
-	RenderContext_AddDrawItem(drawItem);
-
-#if defined(COOKIE)
 	//
 	// now do any dynamic lighting needed
 	//
@@ -1119,6 +1113,9 @@ void RB_StageIteratorGeneric( void )
 		RB_LightingPass(&drawItem, &positionsBuffer);
 	}
 
+	RenderContext_AddDrawItem(drawItem);
+
+#if defined(COOKIE)
 	//
 	// now do fog
 	//

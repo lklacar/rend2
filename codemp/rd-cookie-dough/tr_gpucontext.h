@@ -29,7 +29,7 @@ struct DrawItem
 		uint32_t shaderOptions;
 
 		StateGroup stateGroup;
-		image_t* textures[2];
+		const image_t* textures[2];
 
 		// Vertex format
 		uint32_t enabledVertexAttributes;
@@ -44,6 +44,7 @@ struct DrawItem
 		bool modulateTextures;
 		float alphaTestValue;
 		AlphaTestFunc alphaTestFunc;
+		uint32_t lightBits;
 	} layers[16];
 
 	float minDepthRange;
