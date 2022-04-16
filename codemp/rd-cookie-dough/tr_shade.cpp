@@ -224,7 +224,8 @@ static void DrawMultitextured( shaderCommands_t *input, DrawItem::Layer* drawIte
 	drawItemLayer->textures[1] = R_GetAnimatedImage(&pStage->bundle[1]);
 	drawItemLayer->vertexBuffers[4] = GpuBuffers_AllocFrameVertexDataMemory(
 		input->svars.texcoords[1], sizeof(input->svars.texcoords[1][0]) * input->numVertexes);
-	drawItemLayer->stateGroup.stateBits = pStage->stateBits;
+	drawItemLayer->stateGroup.stateBits =
+		pStage->stateBits | (uint32_t)GL_GetCullState(input->shader->cullType);
 	drawItemLayer->modulateTextures = (tess.shader->multitextureEnv == GL_MODULATE);
 
 	//if ( r_lightmap->integer ) {
