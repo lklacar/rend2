@@ -801,69 +801,66 @@ static vec4_t	GLFogOverrideColors[GLFOGOVERRIDE_MAX] =
 	{ 1.0, 1.0, 1.0, 1.0 }	// GLFOGOVERRIDE_WHITE
 };
 
-static const float logtestExp2 = (sqrt( -log( 1.0 / 255.0 ) ));
+static const float logtestExp2 = (sqrtf( -logf( 1.0 / 255.0 ) ));
 extern bool tr_stencilled; //tr_backend.cpp
 static void RB_IterateStagesGeneric( DrawItem* drawItem, shaderCommands_t *input, const VertexBuffer* positionsBuffer )
 {
-	int stage;
-	bool	UseGLFog = false;
-	bool	FogColorChange = false;
-	fog_t	*fog = NULL;
+	const fog_t *fog = nullptr;
+	int fogMode = 0;
+	float fogStart = 0.0f;
+	float fogEnd = 0.0f;
+	float fogDensity = 0.0f;
+	vec3_t fogColor = {};
 
-	if (tess.fogNum && tess.shader->fogPass && (tess.fogNum == tr.world->globalFog || tess.fogNum == tr.world->numfogs)
-		&& r_drawfog->value == 2)
-	{	// only gl fog global fog and the "special fog"
+	if (r_drawfog->value == 2 &&
+		tess.fogNum &&
+		tess.shader->fogPass &&
+		(tess.fogNum == tr.world->globalFog || tess.fogNum == tr.world->numfogs))
+	{
+		// only gl fog global fog and the "special fog"
 		fog = tr.world->fogs + tess.fogNum;
 
 		if (tr.rangedFog)
-		{ //ranged fog, used for sniper scope
+		{
+			// ranged fog, used for sniper scope
 			float fStart = fog->parms.depthForOpaque;
 
 			if (tr.rangedFog < 0.0f)
-			{ //special designer override
+			{
+				// special designer override
 				fStart = -tr.rangedFog;
 			}
 			else
 			{
-				//the greater tr.rangedFog is, the more fog we will get between the view point and cull distance
-				if ((tr.distanceCull-fStart) < tr.rangedFog)
-				{ //assure a minimum range between fog beginning and cutoff distance
-					fStart = tr.distanceCull-tr.rangedFog;
-
-					if (fStart < 16.0f)
-					{
-						fStart = 16.0f;
-					}
+				// the greater tr.rangedFog is, the more fog we will get between the view point and cull distance
+				if ((tr.distanceCull - fStart) < tr.rangedFog)
+				{
+					//assure a minimum range between fog beginning and cutoff distance
+					fStart = Q_max(16.0f, tr.distanceCull - tr.rangedFog);
 				}
 			}
 
-			qglFogi(GL_FOG_MODE, GL_LINEAR);
+			fogMode = 1;
+			fogStart = fStart;
+			fogEnd = tr.distanceCull;
+		}
+		else
+		{
+			fogMode = 2;
+			fogDensity = logtestExp2 / fog->parms.depthForOpaque;
+		}
 
-			qglFogf(GL_FOG_START, fStart);
-			qglFogf(GL_FOG_END, tr.distanceCull);
-		}
-		else
+		if (!g_bRenderGlowingObjects)
 		{
-			qglFogi(GL_FOG_MODE, GL_EXP2);
-			qglFogf(GL_FOG_DENSITY, logtestExp2 / fog->parms.depthForOpaque);
+			VectorCopy(fog->parms.color, fogColor);
 		}
-		if ( g_bRenderGlowingObjects )
-		{
-			const float fogColor[3] = { 0.0f, 0.0f, 0.0f };
-			qglFogfv(GL_FOG_COLOR, fogColor );
-		}
-		else
-		{
-			qglFogfv(GL_FOG_COLOR, fog->parms.color);
-		}
-		qglEnable(GL_FOG);
-		UseGLFog = true;
 	}
 
 	const bool distortionEffect = ((tess.shader == tr.distortionShader) ||
 		(backEnd.currentEntity && (backEnd.currentEntity->e.renderfx & RF_DISTORTION)));
 
-	for ( stage = 0; stage < input->shader->numUnfoggedPasses; stage++ )
+	bool fogColorChange = false;
+	for ( int stage = 0; stage < input->shader->numUnfoggedPasses; stage++ )
 	{
 		shaderStage_t *pStage = &tess.xstages[stage];
 
@@ -878,7 +875,11 @@ static void RB_IterateStagesGeneric( DrawItem* drawItem, shaderCommands_t *input
 			continue;
 		}
 
-		if ( stage && r_lightmap->integer && !( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap || pStage->bundle[0].vertexLightmap ) )
+		if (stage &&
+			r_lightmap->integer &&
+			!(pStage->bundle[0].isLightmap ||
+				pStage->bundle[1].isLightmap ||
+				pStage->bundle[0].vertexLightmap))
 		{
 			break;
 		}
@@ -889,17 +890,18 @@ static void RB_IterateStagesGeneric( DrawItem* drawItem, shaderCommands_t *input
 			continue;
 		}
 
-		if (UseGLFog)
+		if (fogMode != 0)
 		{
 			if (pStage->mGLFogColorOverride)
 			{
-				qglFogfv(GL_FOG_COLOR, GLFogOverrideColors[pStage->mGLFogColorOverride]);
-				FogColorChange = true;
+				VectorCopy(GLFogOverrideColors[pStage->mGLFogColorOverride], fogColor);
+				fogColorChange = true;
 			}
-			else if (FogColorChange && fog)
+			else if (fogColorChange)
 			{
-				FogColorChange = false;
-				qglFogfv(GL_FOG_COLOR, fog->parms.color);
+				// NOTE: Does this need the !g_bRenderGlowingObjects check like above?
+				fogColorChange = false;
+				VectorCopy(fog->parms.color, fogColor);
 			}
 		}
 
@@ -954,6 +956,12 @@ static void RB_IterateStagesGeneric( DrawItem* drawItem, shaderCommands_t *input
 
 		layer->alphaTestFunc = pStage->alphaTestFunc;
 		layer->alphaTestValue = pStage->alphaTestValue;
+
+		layer->fogMode = fogMode;
+		layer->fogStart = fogStart;
+		layer->fogEnd = fogEnd;
+		layer->fogDensity = fogDensity;
+		VectorCopy(fogColor, layer->fogColor);
 
 		if ( pStage->bundle[1].image != 0 )
 		{
@@ -1045,11 +1053,6 @@ static void RB_IterateStagesGeneric( DrawItem* drawItem, shaderCommands_t *input
 				qglColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 			}
 		}
-	}
-
-	if (FogColorChange)
-	{
-		qglFogfv(GL_FOG_COLOR, fog->parms.color);
 	}
 }
 

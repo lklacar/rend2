@@ -135,11 +135,6 @@ const bool opt_RenderScene = true;
 #else
 const bool opt_RenderScene = false;
 #endif
-#if defined(GEN_TEXCOORDS)
-const bool opt_GenTexCoords = true;
-#else
-const bool opt_GenTexCoords = false;
-#endif
 #if defined(RENDER_LIGHTS_WITH_TEXTURE)
 const bool opt_RenderLightsWithTexture = true;
 #else
@@ -156,6 +151,7 @@ layout(std140, binding = 0) uniform View
 {
 	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
+	vec4 u_CameraPosition;
 	Light u_Lights[32];
 };
 
@@ -192,11 +188,8 @@ void main()
 
 	out_TexCoord0 = in_TexCoord0;
 
-	if (opt_RenderLightsWithTexture)
-	{
-		out_PositionWS = positionWS.xyz;
-	}
-	else
+	out_PositionWS = positionWS.xyz;
+	if (!opt_RenderLightsWithTexture)
 	{
 		out_Color = in_Color;
 		if (opt_Multitexture)
@@ -212,6 +205,11 @@ void main()
 const bool opt_Multitexture = true;
 #else
 const bool opt_Multitexture = false;
+#endif
+#if defined(RENDER_SCENE)
+const bool opt_RenderScene = true;
+#else
+const bool opt_RenderScene = false;
 #endif
 #if defined(RENDER_LIGHTS_WITH_TEXTURE)
 const bool opt_RenderLightsWithTexture = true;
@@ -229,6 +227,7 @@ layout(std140, binding = 0) uniform View
 {
 	mat4 u_ViewMatrix;
 	mat4 u_ProjectionMatrix;
+	vec4 u_CameraPosition;
 	Light u_Lights[32];
 };
 
@@ -248,7 +247,31 @@ layout(location = 0) out vec4 out_FragColor;
 #define u_AlphaTestValue (u_PushConstants[2])
 #define u_AlphaTestFunc (int(u_PushConstants[3]))
 #define u_LightBits (uint(u_PushConstants[4]))
+#define u_FogMode (int(u_PushConstants[5]))
+#define u_FogStart (u_PushConstants[6])
+#define u_FogEnd (u_PushConstants[7])
+#define u_FogDensity (u_PushConstants[8])
+#define u_FogColor (vec3(u_PushConstants[9], u_PushConstants[10], u_PushConstants[11]))
 
+vec3 CalcFog(in vec3 color, in vec3 eye, in vec3 positionWS)
+{
+	float f = 1.0;
+	float z = distance(eye, positionWS);
+
+	switch (u_FogMode) {
+		case 1: // linear
+			f = (u_FogEnd - z) / (u_FogEnd - u_FogStart);
+			break;
+		case 2: // exp2
+		{
+			float e = u_FogDensity * z;
+			f = exp(-(e * e));
+			break;
+		}
+	}
+
+	return mix(u_FogColor, color, clamp(f, 0.0, 1.0));
+}
 
 void main()
 {
@@ -270,7 +293,8 @@ void main()
 			if (distSquared <= (radius * radius))
 			{
 				float factor = 1.0 - sqrt(distSquared) / radius;
-				factor = factor * factor * factor;
+				//factor = factor * factor;
+				//factor = factor * factor;
 				color.rgb *= light.color.rgb * factor;
 			}
 			else
@@ -290,6 +314,11 @@ void main()
 		}
 
 		color *= in_Color;
+
+		if (opt_RenderScene)
+		{
+			color.rgb = CalcFog(color.rgb, u_CameraPosition.xyz, in_PositionWS);
+		}
 
 		bool alphaTestPasses[4] = {
 			true,

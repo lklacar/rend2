@@ -712,6 +712,7 @@ static void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 		viewBufferData->projectionMatrix,
 		backEnd.viewParms.projectionMatrix,
 		sizeof(viewBufferData->projectionMatrix));
+	VectorCopy(backEnd.viewParms.ori.origin, viewBufferData->cameraPosition);
 	for (int i = 0; i < backEnd.refdef.num_dlights; ++i)
 	{
 		const dlight_t* dl = backEnd.refdef.dlights + i;

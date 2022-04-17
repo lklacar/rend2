@@ -1735,6 +1735,7 @@ void	RB_CalcDisintegrateVertDeform( void );
 struct ViewBuffer {
 	float viewMatrix[16];
 	float projectionMatrix[16];
+	vec4_t cameraPosition;
 	struct
 	{
 		vec4_t originAndRadius;

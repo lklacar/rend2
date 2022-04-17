@@ -44,6 +44,13 @@ struct DrawItem
 		bool modulateTextures;
 		float alphaTestValue;
 		AlphaTestFunc alphaTestFunc;
+
+		int fogMode;
+		float fogStart;
+		float fogEnd;
+		float fogDensity;
+		vec3_t fogColor;
+
 		uint32_t lightBits;
 	} layers[16];
 

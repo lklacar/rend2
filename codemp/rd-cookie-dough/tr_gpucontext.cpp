@@ -167,7 +167,7 @@ static void RenderContext_Draw(const DrawItem* drawItem)
 			s_context.shaderProgram = shaderProgram;
 		}
 		
-		float pushConstants[5] = {};
+		float pushConstants[12] = {};
 		if (drawItem->isEntity)
 		{
 			pushConstants[0] = (float)drawItem->entityNum;
@@ -179,10 +179,15 @@ static void RenderContext_Draw(const DrawItem* drawItem)
 			pushConstants[2] = layer->alphaTestValue;
 			pushConstants[3] = (float)layer->alphaTestFunc;
 			pushConstants[4] = (float)layer->lightBits;
+			pushConstants[5] = (float)layer->fogMode;
+			pushConstants[6] = layer->fogStart;
+			pushConstants[7] = layer->fogEnd;
+			pushConstants[8] = layer->fogDensity;
+			VectorCopy(layer->fogColor, &pushConstants[9]);
 
 			if (memcmp(s_context.pushConstants, pushConstants, sizeof(pushConstants)) != 0)
 			{
-				qglUniform1fv(0, 5, pushConstants);
+				qglUniform1fv(0, ARRAY_LEN(pushConstants), pushConstants);
 				Com_Memcpy(s_context.pushConstants, pushConstants, sizeof(pushConstants));
 			}
 		}
